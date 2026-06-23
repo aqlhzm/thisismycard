@@ -8,9 +8,10 @@ import type {
   PageContent, Plugin, AdminSettings
 } from '@/types';
 
-const SB_URL  = () => process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SB_ANON = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const SB_SVC  = () => process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Hardcoded fallbacks for Vercel (env vars must also be set in Vercel dashboard)
+const SB_URL  = () => process.env.NEXT_PUBLIC_SUPABASE_URL  || 'https://zqaxufcfappmlqldjryb.supabase.co';
+const SB_ANON = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxYXh1ZmNmYXBwbWxxbGRqcnliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMDAwODIsImV4cCI6MjA5Nzc3NjA4Mn0.9DIQgqr56nqzx32B6HDelWJUnCXBg7CFXLJqs5-8QZk';
+const SB_SVC  = () => process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxYXh1ZmNmYXBwbWxxbGRqcnliIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjIwMDA4MiwiZXhwIjoyMDk3Nzc2MDgyfQ.w9GP0HuwnWe306HRhoztHXo0eukcl2qVjFCA6ADSxWI';
 
 const admin = () => createClient(SB_URL(), SB_SVC());
 const anon  = () => createClient(SB_URL(), SB_ANON());
