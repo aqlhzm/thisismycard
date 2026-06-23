@@ -102,3 +102,35 @@ CREATE POLICY "public_read_photos"
   ON storage.objects FOR SELECT
   TO anon
   USING (bucket_id = 'profile-photos');
+
+-- Admin settings table
+CREATE TABLE IF NOT EXISTS admin_settings (
+  id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_name             TEXT DEFAULT 'ThisIsMyCard',
+  company_email            TEXT DEFAULT 'hello@thisismycard.io',
+  admin_email              TEXT DEFAULT 'admin@thisismycard.io',
+  email_provider           TEXT DEFAULT 'none',
+  resend_api_key           TEXT DEFAULT '',
+  smtp_host                TEXT DEFAULT '',
+  smtp_port                TEXT DEFAULT '587',
+  smtp_user                TEXT DEFAULT '',
+  smtp_pass                TEXT DEFAULT '',
+  auto_send_confirmation   BOOLEAN DEFAULT false,
+  auto_send_status_updates BOOLEAN DEFAULT false,
+  whatsapp_notify          BOOLEAN DEFAULT false,
+  notify_on_new_order      BOOLEAN DEFAULT false,
+  created_at               TIMESTAMPTZ DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE admin_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_admin_settings"
+  ON admin_settings FOR ALL
+  TO service_role
+  USING (true) WITH CHECK (true);
+
+-- Insert default row
+INSERT INTO admin_settings (company_name, email_provider)
+VALUES ('ThisIsMyCard', 'none')
+ON CONFLICT DO NOTHING;
