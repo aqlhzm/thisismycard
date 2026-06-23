@@ -11,45 +11,127 @@ interface NFCCardVisualProps {
   animated?: boolean;
 }
 
-const colorClasses: Record<CardColor, { bg: string; text: string; sub: string }> = {
-  black:     { bg: 'nfc-card-black',     text: 'text-white',      sub: 'text-gray-400' },
-  white:     { bg: 'nfc-card-white',     text: 'text-gray-900',   sub: 'text-gray-500' },
-  orange:    { bg: 'nfc-card-orange',    text: 'text-white',      sub: 'text-orange-100' },
-  green:     { bg: 'nfc-card-green',     text: 'text-white',      sub: 'text-green-100' },
-  red:       { bg: 'nfc-card-red',       text: 'text-white',      sub: 'text-red-100' },
-  pink:      { bg: 'nfc-card-pink',      text: 'text-white',      sub: 'text-pink-100' },
-  blue:      { bg: 'nfc-card-blue',      text: 'text-white',      sub: 'text-blue-100' },
-  turquoise: { bg: 'nfc-card-turquoise', text: 'text-white',      sub: 'text-cyan-100' },
+const colorConfig: Record<CardColor, { bg: string; nameColor: string; subColor: string; shimmer: string }> = {
+  black:     { bg: 'nfc-card-black',     nameColor: '#ffffff',   subColor: 'rgba(255,255,255,0.5)',  shimmer: 'rgba(255,255,255,0.06)' },
+  white:     { bg: 'nfc-card-white',     nameColor: '#0F0F0F',   subColor: 'rgba(0,0,0,0.45)',        shimmer: 'rgba(0,0,0,0.04)'       },
+  orange:    { bg: 'nfc-card-orange',    nameColor: '#ffffff',   subColor: 'rgba(255,255,255,0.65)',  shimmer: 'rgba(255,255,255,0.08)' },
+  green:     { bg: 'nfc-card-green',     nameColor: '#ffffff',   subColor: 'rgba(255,255,255,0.65)',  shimmer: 'rgba(255,255,255,0.08)' },
+  red:       { bg: 'nfc-card-red',       nameColor: '#ffffff',   subColor: 'rgba(255,255,255,0.65)',  shimmer: 'rgba(255,255,255,0.08)' },
+  pink:      { bg: 'nfc-card-pink',      nameColor: '#ffffff',   subColor: 'rgba(255,255,255,0.65)',  shimmer: 'rgba(255,255,255,0.08)' },
+  blue:      { bg: 'nfc-card-blue',      nameColor: '#ffffff',   subColor: 'rgba(255,255,255,0.65)',  shimmer: 'rgba(255,255,255,0.08)' },
+  turquoise: { bg: 'nfc-card-turquoise', nameColor: '#ffffff',   subColor: 'rgba(255,255,255,0.65)',  shimmer: 'rgba(255,255,255,0.08)' },
 };
 
-const sizeMap = {
-  sm: { w: 'w-48',  h: 'h-[120px]', name: 'text-sm',  sub: 'text-xs',  p: 'p-4' },
-  md: { w: 'w-72',  h: 'h-[170px]', name: 'text-lg',  sub: 'text-sm',  p: 'p-5' },
-  lg: { w: 'w-96',  h: 'h-[228px]', name: 'text-2xl', sub: 'text-base',p: 'p-7' },
+const sizeConfig = {
+  sm: { width: 192, height: 114, nameSz: 13, subSz: 10.5, pad: 16, logoSz: 9, nfcSz: 14 },
+  md: { width: 288, height: 172, nameSz: 17, subSz: 13,   pad: 22, logoSz: 11, nfcSz: 18 },
+  lg: { width: 380, height: 228, nameSz: 22, subSz: 15,   pad: 28, logoSz: 13, nfcSz: 22 },
 };
 
 export default function NFCCardVisual({
-  color, name = 'Your Name', title = 'Job Title', company = 'Company',
+  color, name = 'Your Name', title = 'Job Title', company = 'Company Name',
   size = 'md', animated = false,
 }: NFCCardVisualProps) {
-  const c = colorClasses[color];
-  const s = sizeMap[size];
+  const c = colorConfig[color];
+  const s = sizeConfig[size];
+
   return (
-    <div className={`${s.w} ${s.h} ${c.bg} ${s.p} rounded-2xl flex flex-col justify-between relative overflow-hidden ${animated ? 'animate-float' : ''}`}>
-      <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/10" />
-      <div className="absolute -bottom-6 -left-6 w-24 h-24 rounded-full bg-white/5" />
-      <div className="absolute top-3 right-4 opacity-30">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className={c.text}>
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
-          <circle cx="12" cy="12" r="3" opacity=".5"/>
-        </svg>
+    <div
+      className={`${c.bg} relative overflow-hidden select-none${animated ? ' animate-float' : ''}`}
+      style={{
+        width: s.width,
+        height: s.height,
+        borderRadius: 16,
+        flexShrink: 0,
+      }}
+    >
+      {/* Noise texture overlay */}
+      <div style={{
+        position:'absolute',inset:0,
+        backgroundImage:`url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E")`,
+        opacity:0.6,
+        pointerEvents:'none',
+      }}/>
+
+      {/* Highlight streak */}
+      <div style={{
+        position:'absolute',top:-40,left:-40,width:'60%',height:'130%',
+        background:`linear-gradient(135deg, ${c.shimmer} 0%, transparent 60%)`,
+        transform:'rotate(-10deg)',pointerEvents:'none',
+      }}/>
+
+      {/* Bottom glow */}
+      <div style={{
+        position:'absolute',bottom:-20,right:-20,width:120,height:120,
+        borderRadius:'50%',
+        background:color==='black'?'rgba(0,212,255,0.08)':color==='white'?'rgba(0,0,0,0.04)':'rgba(255,255,255,0.1)',
+        filter:'blur(20px)',pointerEvents:'none',
+      }}/>
+
+      {/* Content */}
+      <div style={{ position:'absolute',inset:0,padding:s.pad,display:'flex',flexDirection:'column',justifyContent:'space-between' }}>
+        {/* Top row */}
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start' }}>
+          {/* Brand */}
+          <div style={{
+            color:c.subColor,
+            fontSize:s.logoSz,
+            fontWeight:600,
+            letterSpacing:'0.15em',
+            textTransform:'uppercase',
+            fontFamily:"'DM Sans',system-ui,sans-serif",
+          }}>
+            ThisIsMyCard
+          </div>
+          {/* NFC icon */}
+          <svg width={s.nfcSz} height={s.nfcSz} viewBox="0 0 24 24" fill="none" style={{opacity:0.4}}>
+            <path d="M20 12C20 7.58172 16.4183 4 12 4" stroke={c.nameColor} strokeWidth="2" strokeLinecap="round"/>
+            <path d="M16 12C16 9.79086 14.2091 8 12 8" stroke={c.nameColor} strokeWidth="2" strokeLinecap="round"/>
+            <circle cx="12" cy="12" r="2" fill={c.nameColor}/>
+          </svg>
+        </div>
+
+        {/* Bottom name block */}
+        <div>
+          <div style={{
+            color: c.nameColor,
+            fontSize: s.nameSz,
+            fontWeight: 600,
+            lineHeight: 1.2,
+            fontFamily:"'DM Sans',system-ui,sans-serif",
+            marginBottom: 3,
+            letterSpacing: '-0.02em',
+          }}>
+            {name}
+          </div>
+          <div style={{
+            color: c.subColor,
+            fontSize: s.subSz,
+            fontWeight: 400,
+            fontFamily:"'DM Sans',system-ui,sans-serif",
+            lineHeight: 1.4,
+          }}>
+            {title}
+          </div>
+          <div style={{
+            color: c.subColor,
+            fontSize: s.subSz - 1,
+            fontWeight: 400,
+            fontFamily:"'DM Sans',system-ui,sans-serif",
+            opacity: 0.75,
+          }}>
+            {company}
+          </div>
+        </div>
       </div>
-      <div className={`${c.sub} text-xs font-medium tracking-widest uppercase opacity-60`}>ThisIsMyCard</div>
-      <div>
-        <div className={`${c.text} ${s.name} font-semibold leading-tight`}>{name}</div>
-        <div className={`${c.sub} ${s.sub} mt-0.5`}>{title}</div>
-        <div className={`${c.sub} ${s.sub} opacity-70`}>{company}</div>
-      </div>
+
+      {/* Card edge gloss */}
+      <div style={{
+        position:'absolute',inset:0,
+        borderRadius:16,
+        boxShadow:'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.1)',
+        pointerEvents:'none',
+      }}/>
     </div>
   );
 }
