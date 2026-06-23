@@ -198,8 +198,9 @@ export default function AdminPage() {
   const [settings,  setSettings] = useState<Partial<AdminSettings>>({});
   const [landingContent, setLandingContent] = useState<Record<string, unknown>>({});
   const [plugins,   setPlugins]  = useState<Array<{ plugin_key:string; enabled:boolean; config:Record<string,string> }>>([]);
-  const [loading,   setLoading]  = useState(true);
-  const [isSeedData, setIsSeedData] = useState(false);
+  const [loading,     setLoading]    = useState(true);
+  const [isSeedData,  setIsSeedData]  = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // orders UI
   const [selOrder,   setSelOrder]   = useState<Order | null>(null);
@@ -245,6 +246,10 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => { if (authed) load(); }, [authed, load]);
+  // Check if user already dismissed the banner
+  useEffect(() => {
+    try { if (localStorage.getItem('timc_banner_dismissed') === '1') setBannerDismissed(true); } catch {}
+  }, []);
 
   const chStatus = async (id: string, status: OrderStatus) => {
     await updateOrderStatus(id, status);
@@ -289,29 +294,29 @@ export default function AdminPage() {
     <div style={{ ...F, display:'flex', minHeight:'100vh', background:'#f7f7f6' }}>
 
       {/* ── Setup Banner ── */}
-      {isSeedData && (
-        <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, background:'linear-gradient(90deg,#f59e0b,#d97706)', padding:'10px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, minWidth:0 }}>
-            <span style={{ fontSize:16, flexShrink:0 }}>⚠️</span>
-            <span style={{ fontSize:13, color:'#0F0F0F' }}>
-              <strong>Database belum disambungkan.</strong> Pergi ke Supabase SQL Editor → paste SQL dari repo → Run. Lepas tu refresh halaman ini.
+      {isSeedData && !bannerDismissed && (
+        <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, background:'linear-gradient(90deg,#f59e0b,#d97706)', padding:'10px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flex:1, minWidth:0 }}>
+            <span style={{ fontSize:15, flexShrink:0 }}>⚠️</span>
+            <span style={{ fontSize:12, color:'#0F0F0F' }}>
+              <strong>Supabase orders table belum dibuat.</strong> Run SQL orders table migration, lepas tu click Semak Semula.
             </span>
           </div>
-          <div style={{ display:'flex', gap:8, flexShrink:0 }}>
-            <a href="https://supabase.com/dashboard/project/zqaxufcfappmlqldjryb/sql/new" target="_blank" rel="noreferrer"
-              style={{ background:'#0F0F0F', color:'#fff', padding:'6px 14px', borderRadius:8, fontSize:12, fontWeight:700, textDecoration:'none', whiteSpace:'nowrap' }}>
-              Buka SQL Editor →
-            </a>
-            <button onClick={() => { setIsSeedData(false); load(); }}
-              style={{ background:'rgba(0,0,0,0.15)', color:'#0F0F0F', padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:600, border:'none', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+          <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+            <button onClick={async () => { const ok = await checkDbConnected(); setIsSeedData(!ok); if(ok) toast$('✅ Database disambungkan!'); else toast$('❌ Masih belum connected. Run SQL dulu.'); }}
+              style={{ background:'#0F0F0F', color:'#fff', padding:'6px 12px', borderRadius:7, fontSize:11, fontWeight:700, border:'none', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
               ↻ Semak Semula
+            </button>
+            <button onClick={() => { setBannerDismissed(true); try { localStorage.setItem('timc_banner_dismissed','1'); } catch {} }}
+              style={{ background:'rgba(0,0,0,0.2)', color:'#0F0F0F', padding:'6px 10px', borderRadius:7, fontSize:11, fontWeight:600, border:'none', cursor:'pointer', fontFamily:'inherit' }}>
+              ✕ Tutup
             </button>
           </div>
         </div>
       )}
 
       {/* ── Sidebar ── */}
-      <aside style={{ width:220, background:'#0F0F0F', display:'flex', flexDirection:'column', flexShrink:0, position:'sticky', top: isSeedData ? 44 : 0, height: isSeedData ? 'calc(100vh - 44px)' : '100vh', overflowY:'auto' }}>
+      <aside style={{ width:220, background:'#0F0F0F', display:'flex', flexDirection:'column', flexShrink:0, position:'sticky', top: (isSeedData && !bannerDismissed) ? 44 : 0, height: (isSeedData && !bannerDismissed) ? 'calc(100vh - 44px)' : '100vh', overflowY:'auto' }}>
         <div style={{ padding:'22px 20px 16px', borderBottom:'1px solid rgba(255,255,255,.06)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             {company.logo_url
