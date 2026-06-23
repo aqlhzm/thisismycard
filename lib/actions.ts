@@ -1,286 +1,288 @@
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
-import type { Order, OrderInsert, OrderStatus, AdminSettings } from '@/types';
+import type {
+  Order, OrderInsert, OrderStatus,
+  CompanyProfile, Product, PaymentSettings,
+  PageContent, Plugin, AdminSettings
+} from '@/types';
 
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-function getAnonClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}
+const SB_URL  = () => process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SB_ANON = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SB_SVC  = () => process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// ── Customer ───────────────────────────────────────────────────────────
-export async function submitOrder(data: OrderInsert): Promise<{ success: boolean; id?: string; error?: string }> {
-  try {
-    const sb = getAnonClient();
-    const { data: result, error } = await sb.from('orders').insert({ ...data, status: 'new' }).select('id').single();
-    if (error) throw error;
-    // Auto send confirmation email if configured
-    try { await sendOrderConfirmationEmail(result.id); } catch {}
-    return { success: true, id: result.id };
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : 'Submission failed' };
-  }
-}
+const admin = () => createClient(SB_URL(), SB_SVC());
+const anon  = () => createClient(SB_URL(), SB_ANON());
 
-// ── Admin Auth ─────────────────────────────────────────────────────────
-export async function adminLogin(email: string, password: string): Promise<{ success: boolean; error?: string }> {
-  // Fallback to hardcoded defaults if env vars not set on Vercel
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@thisismycard.io';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@TIMC2024!';
-  if (email.trim().toLowerCase() === adminEmail.trim().toLowerCase() && password === adminPassword) {
+// ── Auth ─────────────────────────────────────────────────────────────────
+export async function adminLogin(email: string, password: string) {
+  const E = process.env.ADMIN_EMAIL    || 'admin@thisismycard.io';
+  const P = process.env.ADMIN_PASSWORD || 'Admin@TIMC2024!';
+  if (email.trim().toLowerCase() === E.toLowerCase() && password === P)
     return { success: true };
-  }
   return { success: false, error: 'Invalid email or password.' };
 }
 
-// ── Orders ─────────────────────────────────────────────────────────────
+// ── Orders ────────────────────────────────────────────────────────────────
+export async function submitOrder(data: OrderInsert) {
+  try {
+    const { data: r, error } = await anon().from('orders').insert({ ...data, status: 'new' }).select('id').single();
+    if (error) throw error;
+    try { await sendConfirmationEmail(r.id); } catch {}
+    return { success: true, id: r.id as string };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
 export async function getAllOrders(): Promise<{ orders?: Order[]; error?: string }> {
   try {
-    const { data, error } = await getAdminClient().from('orders').select('*').order('created_at', { ascending: false });
+    const { data, error } = await admin().from('orders').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     return { orders: data as Order[] };
-  } catch (err: unknown) {
-    return { error: err instanceof Error ? err.message : 'Failed' };
-  }
+  } catch (e: unknown) { return { error: (e as Error).message }; }
 }
 
-export async function getOrderById(id: string): Promise<{ order?: Order; error?: string }> {
+export async function updateOrderStatus(id: string, status: OrderStatus) {
   try {
-    const { data, error } = await getAdminClient().from('orders').select('*').eq('id', id).single();
+    const { error } = await admin().from('orders').update({ status }).eq('id', id);
     if (error) throw error;
-    return { order: data as Order };
-  } catch (err: unknown) {
-    return { error: err instanceof Error ? err.message : 'Not found' };
-  }
-}
-
-export async function updateOrderStatus(id: string, status: OrderStatus): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await getAdminClient().from('orders').update({ status }).eq('id', id);
-    if (error) throw error;
-    // Send status update email
-    try { await sendStatusUpdateEmail(id, status); } catch {}
+    try { await sendStatusEmail(id, status); } catch {}
     return { success: true };
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : 'Update failed' };
-  }
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
 }
 
-export async function deleteOrder(id: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteOrder(id: string) {
   try {
-    const { error } = await getAdminClient().from('orders').delete().eq('id', id);
+    const { error } = await admin().from('orders').delete().eq('id', id);
     if (error) throw error;
     return { success: true };
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : 'Delete failed' };
-  }
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
 }
 
-export async function getOrderStats(): Promise<{
-  total: number; new: number; pending: number; production: number;
-  shipped: number; completed: number; todayCount: number; weekCount: number;
-  error?: string;
-}> {
+export async function getOrderStats() {
   try {
-    const { data, error } = await getAdminClient().from('orders').select('status, created_at');
-    if (error) throw error;
-    const orders = data || [];
+    const { data } = await admin().from('orders').select('status, created_at');
+    const rows = data || [];
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const weekAgo = new Date(now.getTime() - 7*24*3600*1000).toISOString();
+    const monthAgo = new Date(now.getTime() - 30*24*3600*1000).toISOString();
+    // Build daily chart for last 14 days
+    const chartData: Record<string, number> = {};
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now.getTime() - i*24*3600*1000);
+      chartData[d.toISOString().slice(0,10)] = 0;
+    }
+    rows.forEach(r => { const d = r.created_at.slice(0,10); if (chartData[d] !== undefined) chartData[d]++; });
     return {
-      total: orders.length,
-      new: orders.filter(o => o.status === 'new').length,
-      pending: orders.filter(o => o.status === 'pending_verification').length,
-      production: orders.filter(o => o.status === 'in_production').length,
-      shipped: orders.filter(o => o.status === 'shipped').length,
-      completed: orders.filter(o => o.status === 'completed').length,
-      todayCount: orders.filter(o => o.created_at >= today).length,
-      weekCount: orders.filter(o => o.created_at >= weekAgo).length,
+      total: rows.length,
+      new:        rows.filter(o => o.status === 'new').length,
+      pending:    rows.filter(o => o.status === 'pending_verification').length,
+      production: rows.filter(o => o.status === 'in_production').length,
+      shipped:    rows.filter(o => o.status === 'shipped').length,
+      completed:  rows.filter(o => o.status === 'completed').length,
+      todayCount: rows.filter(o => o.created_at >= today).length,
+      weekCount:  rows.filter(o => o.created_at >= weekAgo).length,
+      monthCount: rows.filter(o => o.created_at >= monthAgo).length,
+      revenue:    rows.filter(o => o.status === 'completed').length * 45,
+      chartData,
     };
-  } catch {
-    return { total:0,new:0,pending:0,production:0,shipped:0,completed:0,todayCount:0,weekCount:0 };
-  }
+  } catch { return { total:0,new:0,pending:0,production:0,shipped:0,completed:0,todayCount:0,weekCount:0,monthCount:0,revenue:0,chartData:{} }; }
 }
 
-// ── Email ──────────────────────────────────────────────────────────────
-async function sendOrderConfirmationEmail(orderId: string) {
-  const settings = await getAdminSettings();
-  if (!settings || !settings.auto_send_confirmation) return;
-  if (settings.email_provider === 'none') return;
-  const { order } = await getOrderById(orderId);
-  if (!order) return;
-  await sendEmail({
-    to: order.email,
-    subject: `Your NFC card setup request has been received — ${order.order_number}`,
-    html: buildConfirmationEmail(order),
-    settings,
-  });
+export async function exportOrdersCSV(): Promise<string> {
+  const { orders } = await getAllOrders();
+  if (!orders?.length) return '';
+  const header = ['Order No','Name','Job Title','Company','Email','Phone','WhatsApp','Card Color','Qty','Status','Date'];
+  const rows = orders.map(o => [
+    o.order_number, o.full_name, o.job_title, o.company_name,
+    o.email, o.phone, o.whatsapp, o.card_color,
+    o.quantity_ordered, o.status, o.created_at.slice(0,10)
+  ]);
+  return [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
 }
 
-async function sendStatusUpdateEmail(orderId: string, status: OrderStatus) {
-  const settings = await getAdminSettings();
-  if (!settings || !settings.auto_send_status_updates) return;
-  if (settings.email_provider === 'none') return;
-  const { order } = await getOrderById(orderId);
-  if (!order) return;
-  const statusLabels: Record<OrderStatus, string> = {
-    new: 'New Order',
-    pending_verification: 'Pending Verification',
-    in_production: 'In Production',
-    ready_for_programming: 'Ready for Programming',
-    shipped: 'Shipped',
-    completed: 'Completed',
-  };
-  await sendEmail({
-    to: order.email,
-    subject: `Order Update: ${statusLabels[status]} — ${order.order_number}`,
-    html: buildStatusEmail(order, status),
-    settings,
-  });
-}
-
-export async function sendTestEmail(to: string): Promise<{ success: boolean; error?: string }> {
+// ── Company Profile ───────────────────────────────────────────────────────
+export async function getCompanyProfile(): Promise<CompanyProfile | null> {
   try {
-    const settings = await getAdminSettings();
-    if (!settings || settings.email_provider === 'none') return { success: false, error: 'No email provider configured' };
-    await sendEmail({
-      to,
-      subject: 'Test Email from ThisIsMyCard',
-      html: `<div style="font-family:sans-serif;padding:24px"><h2>✅ Email Working!</h2><p>Your email integration is configured correctly.</p></div>`,
-      settings,
-    });
-    return { success: true };
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : 'Failed' };
-  }
-}
-
-async function sendEmail({ to, subject, html, settings }: { to: string; subject: string; html: string; settings: AdminSettings }) {
-  if (settings.email_provider === 'resend' && settings.resend_api_key) {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${settings.resend_api_key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: `${settings.company_name} <noreply@thisismycard.io>`, to, subject, html }),
-    });
-    if (!res.ok) throw new Error(`Resend error: ${await res.text()}`);
-  } else if (settings.email_provider === 'smtp') {
-    const nodemailer = await import('nodemailer');
-    const transporter = nodemailer.createTransport({
-      host: settings.smtp_host,
-      port: parseInt(settings.smtp_port || '587'),
-      secure: parseInt(settings.smtp_port || '587') === 465,
-      auth: { user: settings.smtp_user, pass: settings.smtp_pass },
-    });
-    await transporter.sendMail({ from: `"${settings.company_name}" <${settings.smtp_user}>`, to, subject, html });
-  }
-}
-
-function buildConfirmationEmail(order: Order): string {
-  return `<!DOCTYPE html><html><body style="font-family:'DM Sans',Arial,sans-serif;background:#f8f8f7;margin:0;padding:24px">
-<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
-<div style="background:#0F0F0F;padding:28px 32px;display:flex;align-items:center;gap:12px">
-  <div style="width:32px;height:32px;background:#00D4FF;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#0F0F0F">N</div>
-  <span style="color:#fff;font-weight:600;font-size:16px">ThisIsMyCard</span>
-</div>
-<div style="padding:32px">
-  <h2 style="color:#0F0F0F;font-size:22px;margin:0 0 8px">We've received your setup request!</h2>
-  <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">Hi ${order.full_name}, your NFC card setup is now in our queue. Here's your summary:</p>
-  <div style="background:#f8f8f7;border-radius:12px;padding:20px;margin-bottom:24px">
-    <table style="width:100%;font-size:14px">
-      <tr><td style="color:#6b7280;padding:6px 0">Order Number</td><td style="font-weight:600;color:#111;text-align:right">${order.order_number}</td></tr>
-      <tr><td style="color:#6b7280;padding:6px 0">Card Color</td><td style="font-weight:600;color:#111;text-align:right;text-transform:capitalize">${order.card_color}</td></tr>
-      <tr><td style="color:#6b7280;padding:6px 0">Quantity</td><td style="font-weight:600;color:#111;text-align:right">${order.quantity_ordered} card${order.quantity_ordered > 1 ? 's' : ''}</td></tr>
-    </table>
-  </div>
-  <p style="color:#6b7280;font-size:14px;line-height:1.6">Our team will verify your details and begin production within 24-48 hours. You'll receive updates at each stage.</p>
-</div>
-<div style="padding:16px 32px;background:#f8f8f7;border-top:1px solid #e5e7eb;text-align:center">
-  <p style="color:#9ca3af;font-size:12px;margin:0">© 2024 ThisIsMyCard · Premium NFC Business Cards</p>
-</div>
-</div></body></html>`;
-}
-
-function buildStatusEmail(order: Order, status: OrderStatus): string {
-  const msgs: Record<OrderStatus, { icon: string; msg: string }> = {
-    new:                   { icon:'📥', msg:'Your order has been received.' },
-    pending_verification:  { icon:'🔍', msg:'We are verifying your details.' },
-    in_production:         { icon:'⚙️', msg:'Your card is now in production!' },
-    ready_for_programming: { icon:'💾', msg:'Your card is ready to be programmed.' },
-    shipped:               { icon:'🚚', msg:'Your card is on its way!' },
-    completed:             { icon:'✅', msg:'Your order is complete. Enjoy your card!' },
-  };
-  const { icon, msg } = msgs[status];
-  const label = status.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
-  return `<!DOCTYPE html><html><body style="font-family:'DM Sans',Arial,sans-serif;background:#f8f8f7;margin:0;padding:24px">
-<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
-<div style="background:#0F0F0F;padding:28px 32px"><span style="color:#fff;font-weight:600;font-size:16px">ThisIsMyCard</span></div>
-<div style="padding:32px;text-align:center">
-  <div style="font-size:40px;margin-bottom:16px">${icon}</div>
-  <h2 style="color:#0F0F0F;font-size:20px;margin:0 0 8px">${label}</h2>
-  <p style="color:#6b7280;font-size:15px">${msg}</p>
-  <p style="color:#9ca3af;font-size:13px">Order: <strong>${order.order_number}</strong> · ${order.full_name}</p>
-</div>
-<div style="padding:16px 32px;background:#f8f8f7;border-top:1px solid #e5e7eb;text-align:center">
-  <p style="color:#9ca3af;font-size:12px;margin:0">© 2024 ThisIsMyCard</p>
-</div>
-</div></body></html>`;
-}
-
-// ── Admin Settings (stored in Supabase) ────────────────────────────────
-export async function getAdminSettings(): Promise<AdminSettings | null> {
-  try {
-    const sb = getAdminClient();
-    const { data } = await sb.from('admin_settings').select('*').single();
-    return data as AdminSettings | null;
+    const { data } = await admin().from('company_profile').select('*').single();
+    return data as CompanyProfile;
   } catch { return null; }
 }
 
-export async function saveAdminSettings(settings: Partial<AdminSettings>): Promise<{ success: boolean; error?: string }> {
+export async function saveCompanyProfile(p: Partial<CompanyProfile>) {
   try {
-    const sb = getAdminClient();
-    const { data: existing } = await sb.from('admin_settings').select('id').single();
-    if (existing) {
-      const { error } = await sb.from('admin_settings').update(settings).eq('id', (existing as {id:string}).id);
+    const { data: ex } = await admin().from('company_profile').select('id').single();
+    if (ex) { const { error } = await admin().from('company_profile').update(p).eq('id', (ex as {id:string}).id); if (error) throw error; }
+    else     { const { error } = await admin().from('company_profile').insert(p); if (error) throw error; }
+    return { success: true };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+export async function uploadAsset(base64: string, filename: string, bucket: string): Promise<{ url?: string; error?: string }> {
+  try {
+    const ext  = filename.split('.').pop() || 'jpg';
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const buf  = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+    const mime = base64.startsWith('data:') ? base64.split(';')[0].split(':')[1] : `image/${ext}`;
+    const { error } = await admin().storage.from(bucket).upload(path, buf, { contentType: mime, upsert: true });
+    if (error) throw error;
+    const { data } = admin().storage.from(bucket).getPublicUrl(path);
+    return { url: data.publicUrl };
+  } catch (e: unknown) { return { error: (e as Error).message }; }
+}
+
+// ── Products ──────────────────────────────────────────────────────────────
+export async function getProducts(): Promise<{ products?: Product[]; error?: string }> {
+  try {
+    const { data, error } = await admin().from('products').select('*').order('sort_order');
+    if (error) throw error;
+    return { products: data as Product[] };
+  } catch (e: unknown) { return { error: (e as Error).message }; }
+}
+
+export async function saveProduct(p: Partial<Product> & { id?: string }) {
+  try {
+    if (p.id) {
+      const { id, ...rest } = p;
+      const { error } = await admin().from('products').update(rest).eq('id', id);
       if (error) throw error;
     } else {
-      const { error } = await sb.from('admin_settings').insert(settings);
+      const { error } = await admin().from('products').insert(p);
       if (error) throw error;
     }
     return { success: true };
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : 'Failed' };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+export async function deleteProduct(id: string) {
+  try {
+    const { error } = await admin().from('products').delete().eq('id', id);
+    if (error) throw error;
+    return { success: true };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+// ── Payment Settings ──────────────────────────────────────────────────────
+export async function getPaymentSettings(): Promise<PaymentSettings | null> {
+  try {
+    const { data } = await admin().from('payment_settings').select('*').single();
+    return data as PaymentSettings;
+  } catch { return null; }
+}
+
+export async function savePaymentSettings(p: Partial<PaymentSettings>) {
+  try {
+    const { data: ex } = await admin().from('payment_settings').select('id').single();
+    if (ex) { await admin().from('payment_settings').update(p).eq('id', (ex as {id:string}).id); }
+    else     { await admin().from('payment_settings').insert(p); }
+    return { success: true };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+// ── Page Content ──────────────────────────────────────────────────────────
+export async function getPageContent(page: string): Promise<PageContent | null> {
+  try {
+    const { data } = await admin().from('page_content').select('*').eq('page', page).single();
+    return data as PageContent;
+  } catch { return null; }
+}
+
+export async function savePageContent(page: string, content: Record<string, unknown>) {
+  try {
+    const { data: ex } = await admin().from('page_content').select('id').eq('page', page).single();
+    if (ex) { await admin().from('page_content').update({ content }).eq('page', page); }
+    else     { await admin().from('page_content').insert({ page, content }); }
+    return { success: true };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+// ── Plugins ───────────────────────────────────────────────────────────────
+export async function getPlugins(): Promise<Plugin[]> {
+  try {
+    const { data } = await admin().from('plugins').select('*');
+    return (data || []) as Plugin[];
+  } catch { return []; }
+}
+
+export async function savePlugin(plugin_key: string, enabled: boolean, config: Record<string, string>) {
+  try {
+    const { data: ex } = await admin().from('plugins').select('id').eq('plugin_key', plugin_key).single();
+    if (ex) { await admin().from('plugins').update({ enabled, config }).eq('plugin_key', plugin_key); }
+    else     { await admin().from('plugins').insert({ plugin_key, enabled, config }); }
+    return { success: true };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+// ── Admin Settings ────────────────────────────────────────────────────────
+export async function getAdminSettings(): Promise<AdminSettings | null> {
+  try {
+    const { data } = await admin().from('admin_settings').select('*').single();
+    return data as AdminSettings;
+  } catch { return null; }
+}
+
+export async function saveAdminSettings(s: Partial<AdminSettings>) {
+  try {
+    const { data: ex } = await admin().from('admin_settings').select('id').single();
+    if (ex) { await admin().from('admin_settings').update(s).eq('id', (ex as {id:string}).id); }
+    else     { await admin().from('admin_settings').insert(s); }
+    return { success: true };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+// ── Email Helpers ─────────────────────────────────────────────────────────
+async function sendEmail(to: string, subject: string, html: string) {
+  const s = await getAdminSettings();
+  if (!s || s.email_provider === 'none') return;
+  if (s.email_provider === 'resend' && s.resend_api_key) {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${s.resend_api_key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: `${s.company_name || 'ThisIsMyCard'} <noreply@thisismycard.io>`, to, subject, html }),
+    });
+  } else if (s.email_provider === 'smtp') {
+    const nm = await import('nodemailer');
+    const t = nm.createTransport({ host: s.smtp_host, port: parseInt(s.smtp_port||'587'), secure: s.smtp_port==='465', auth: { user: s.smtp_user, pass: s.smtp_pass } });
+    await t.sendMail({ from: `"${s.company_name}" <${s.smtp_user}>`, to, subject, html });
   }
 }
 
-export async function sendManualEmail(orderId: string, subject: string, message: string): Promise<{ success: boolean; error?: string }> {
+export async function sendTestEmail(to: string) {
   try {
-    const settings = await getAdminSettings();
-    if (!settings || settings.email_provider === 'none') return { success: false, error: 'Email not configured' };
-    const { order } = await getOrderById(orderId);
-    if (!order) return { success: false, error: 'Order not found' };
-    await sendEmail({
-      to: order.email,
-      subject,
-      html: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;background:#f8f8f7">
-<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #e5e7eb">
-  <h3 style="color:#0F0F0F;margin:0 0 16px">${subject}</h3>
-  <p style="color:#374151;line-height:1.7;white-space:pre-wrap">${message}</p>
-  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="color:#9ca3af;font-size:12px">Order: ${order.order_number} · ThisIsMyCard</p>
-</div></body></html>`,
-      settings,
-    });
+    await sendEmail(to, 'Test — ThisIsMyCard', '<h2>✅ Email berfungsi!</h2><p>Konfigurasi email anda betul.</p>');
     return { success: true };
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : 'Failed' };
-  }
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+export async function sendManualEmail(orderId: string, subject: string, message: string) {
+  try {
+    const { data } = await admin().from('orders').select('email,full_name,order_number').eq('id', orderId).single();
+    if (!data) return { success: false, error: 'Order not found' };
+    const o = data as { email: string; full_name: string; order_number: string };
+    await sendEmail(o.email, subject, `<div style="font-family:Arial;padding:24px"><h3>${subject}</h3><p style="white-space:pre-wrap">${message}</p><hr><p style="color:#999;font-size:12px">Order: ${o.order_number} · ThisIsMyCard</p></div>`);
+    return { success: true };
+  } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
+}
+
+async function sendConfirmationEmail(orderId: string) {
+  const s = await getAdminSettings();
+  if (!s?.auto_send_confirmation) return;
+  const { data } = await admin().from('orders').select('*').eq('id', orderId).single();
+  if (!data) return;
+  const o = data as Order;
+  await sendEmail(o.email, `Setup request received — ${o.order_number}`,
+    `<div style="font-family:Arial;max-width:560px;margin:0 auto;padding:24px"><h2>Terima kasih, ${o.full_name}!</h2><p>Request setup kad NFC anda telah diterima. Order No: <strong>${o.order_number}</strong></p><p>Kami akan proses dalam 24–48 jam. Nantikan update daripada kami.</p><p style="color:#999;font-size:12px">© ThisIsMyCard</p></div>`
+  );
+}
+
+async function sendStatusEmail(orderId: string, status: OrderStatus) {
+  const s = await getAdminSettings();
+  if (!s?.auto_send_status_updates) return;
+  const { data } = await admin().from('orders').select('*').eq('id', orderId).single();
+  if (!data) return;
+  const o = data as Order;
+  const labels: Record<OrderStatus, string> = { new:'New Order', pending_verification:'Pending Verification', in_production:'In Production', ready_for_programming:'Ready for Programming', shipped:'Shipped', completed:'Completed' };
+  await sendEmail(o.email, `Order Update: ${labels[status]} — ${o.order_number}`,
+    `<div style="font-family:Arial;max-width:560px;margin:0 auto;padding:24px"><h2>Status Update</h2><p>Hi ${o.full_name},</p><p>Order <strong>${o.order_number}</strong> anda kini: <strong>${labels[status]}</strong></p><p style="color:#999;font-size:12px">© ThisIsMyCard</p></div>`
+  );
 }

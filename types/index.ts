@@ -36,26 +36,88 @@ export type OrderInsert = Omit<Order, 'id' | 'created_at' | 'updated_at' | 'stat
 
 export type AppView = 'landing' | 'customer_form' | 'success' | 'admin_login' | 'admin_dashboard';
 
-export interface AdminPlugin {
+export interface CompanyProfile {
+  id?: string;
+  name: string;
+  tagline: string;
+  description: string;
+  logo_url: string;
+  hero_image_url: string;
+  email: string;
+  phone: string;
+  whatsapp: string;
+  address: string;
+  website: string;
+  instagram: string;
+  facebook: string;
+  linkedin: string;
+  tiktok: string;
+  youtube: string;
+  twitter: string;
+  shopee: string;
+  lazada: string;
+  business_hours: string;
+}
+
+export interface Product {
   id: string;
   name: string;
   description: string;
-  enabled: boolean;
-  config: Record<string, string>;
-  icon: string;
-  category: 'email' | 'notification' | 'crm' | 'analytics' | 'shipping';
+  sku: string;
+  price: number;
+  original_price: number;
+  currency: string;
+  image_url: string;
+  images: string[];
+  colors: string[];
+  in_stock: boolean;
+  stock_count: number;
+  is_featured: boolean;
+  sort_order: number;
+  tags: string[];
+  specifications: Record<string, string>;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface EmailTemplate {
-  id: string;
-  name: string;
-  subject: string;
-  trigger: OrderStatus | 'new_order';
+export interface PaymentSettings {
+  id?: string;
+  billplz_enabled: boolean;
+  billplz_api_key: string;
+  billplz_collection_id: string;
+  billplz_x_signature: string;
+  billplz_sandbox: boolean;
+  stripe_enabled: boolean;
+  stripe_publishable_key: string;
+  stripe_secret_key: string;
+  stripe_webhook_secret: string;
+  stripe_sandbox: boolean;
+  bank_transfer_enabled: boolean;
+  bank_name: string;
+  bank_account_name: string;
+  bank_account_number: string;
+  bank_swift_code: string;
+  bank_instructions: string;
+  currency: string;
+  tax_enabled: boolean;
+  tax_rate: number;
+}
+
+export interface PageContent {
+  id?: string;
+  page: string;
+  content: Record<string, unknown>;
+}
+
+export interface Plugin {
+  id?: string;
+  plugin_key: string;
   enabled: boolean;
-  body: string;
+  config: Record<string, string>;
 }
 
 export interface AdminSettings {
+  id?: string;
   company_name: string;
   company_email: string;
   admin_email: string;
