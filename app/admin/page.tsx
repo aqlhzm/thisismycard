@@ -248,7 +248,10 @@ export default function AdminPage() {
   const [company,   setCompany]  = useState<Partial<CompanyProfile>>({});
   const [payments,  setPayments] = useState<Partial<PaymentSettings>>({});
   const [settings,  setSettings] = useState<Partial<AdminSettings>>({});
-  const [landingContent, setLandingContent] = useState<Record<string, unknown>>({});
+  const [landingContent,  setLandingContent]  = useState<Record<string, unknown>>({});
+  const [storyContent,    setStoryContent]    = useState<Record<string, unknown>>({});
+  const [termsContent,    setTermsContent]    = useState<Record<string, unknown>>({});
+  const [activePageTab,   setActivePageTab]   = useState<'landing'|'our-story'|'terms'>('landing');
   const [plugins,   setPlugins]  = useState<Array<{ plugin_key:string; enabled:boolean; config:Record<string,string> }>>([]);
   const [loading,     setLoading]    = useState(true);
   const [isSeedData,  setIsSeedData]  = useState(false);
@@ -277,9 +280,11 @@ export default function AdminPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [oRes, stRes, pRes, cRes, payRes, sRes, lcRes, plRes] = await Promise.all([
+    const [oRes, stRes, pRes, cRes, payRes, sRes, lcRes, scRes, tcRes, plRes] = await Promise.all([
       getAllOrders(), getOrderStats(), getProducts(), getCompanyProfile(),
-      getPaymentSettings(), getAdminSettings(), getPageContent('landing'), getPlugins(),
+      getPaymentSettings(), getAdminSettings(),
+      getPageContent('landing'), getPageContent('our-story'), getPageContent('terms'),
+      getPlugins(),
     ]);
     if (oRes.orders) {
       setOrders(oRes.orders);
@@ -293,6 +298,8 @@ export default function AdminPage() {
     if (payRes) setPayments(payRes);
     if (sRes)   setSettings(sRes);
     if (lcRes)  setLandingContent(lcRes.content || {});
+    if (scRes)  setStoryContent(scRes.content || {});
+    if (tcRes)  setTermsContent(tcRes.content || {});
     setPlugins(plRes);
     setLoading(false);
   }, []);
@@ -836,44 +843,166 @@ export default function AdminPage() {
 
         {/* ══ PAGES ══════════════════════════════════════════ */}
         {tab==='pages' && (
-          <div style={{ maxWidth:720 }}>
-            <div style={{ marginBottom:22 }}><h1 style={{ fontSize:22,fontWeight:700,color:'#0F0F0F',margin:'0 0 4px',letterSpacing:'-0.03em' }}>Pages Editor</h1><p style={{ fontSize:13,color:'#6b7280',margin:0 }}>Edit kandungan laman web utama.</p></div>
-
-            <Section title="🏠 Landing Page — Hero Section">
-              <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
-                <div><Label>Hero Title</Label><input style={inp()} value={(landingContent.hero_title as string)||''} onChange={e => setLandingContent(c => ({ ...c, hero_title:e.target.value }))}/></div>
-                <div><Label>Hero Subtitle</Label><textarea style={{ ...inp(), resize:'vertical', height:72 }} value={(landingContent.hero_subtitle as string)||''} onChange={e => setLandingContent(c => ({ ...c, hero_subtitle:e.target.value }))}/></div>
-                <div><Label>Badge Text</Label><input style={inp()} value={(landingContent.hero_badge as string)||''} onChange={e => setLandingContent(c => ({ ...c, hero_badge:e.target.value }))}/></div>
-                <Grid2>
-                  <div><Label>CTA Button Primary</Label><input style={inp()} value={(landingContent.cta_primary as string)||''} onChange={e => setLandingContent(c => ({ ...c, cta_primary:e.target.value }))}/></div>
-                  <div><Label>CTA Button Secondary</Label><input style={inp()} value={(landingContent.cta_secondary as string)||''} onChange={e => setLandingContent(c => ({ ...c, cta_secondary:e.target.value }))}/></div>
-                </Grid2>
+          <div style={{ maxWidth:800 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:22 }}>
+              <div>
+                <h1 style={{ fontSize:22,fontWeight:700,color:'#0F0F0F',margin:'0 0 4px',letterSpacing:'-0.03em' }}>Pages Editor</h1>
+                <p style={{ fontSize:13,color:'#6b7280',margin:0 }}>Edit kandungan semua halaman website.</p>
               </div>
-            </Section>
+              <div style={{ display:'flex', gap:6 }}>
+                {([['landing','🏠 Landing'],['our-story','📖 Our Story'],['terms','📋 Terms']] as const).map(([pg,label])=>(
+                  <button key={pg} onClick={()=>setActivePageTab(pg)} style={{
+                    fontSize:12, fontWeight:activePageTab===pg?700:500,
+                    padding:'8px 16px', borderRadius:9, border:'1px solid',
+                    cursor:'pointer', fontFamily:'inherit', transition:'all .15s',
+                    background: activePageTab===pg ? '#0F0F0F' : '#fff',
+                    color: activePageTab===pg ? '#fff' : '#6b7280',
+                    borderColor: activePageTab===pg ? '#0F0F0F' : '#e5e7eb',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
 
-            <Section title="📊 Stats (Hero Section)">
-              {((landingContent.stats as Array<{value:string;label:string}>) || []).map((s,i) => (
-                <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 1fr 32px', gap:10, marginBottom:10, alignItems:'center' }}>
-                  <div><Label>Nilai</Label><input style={inp()} value={s.value} onChange={e => { const a = [...((landingContent.stats as Array<{value:string;label:string}>)||[])]; a[i]={...a[i],value:e.target.value}; setLandingContent(c => ({ ...c, stats:a })); }}/></div>
-                  <div><Label>Label</Label><input style={inp()} value={s.label} onChange={e => { const a = [...((landingContent.stats as Array<{value:string;label:string}>)||[])]; a[i]={...a[i],label:e.target.value}; setLandingContent(c => ({ ...c, stats:a })); }}/></div>
-                  <button onClick={() => { const a = ((landingContent.stats as Array<{value:string;label:string}>)||[]).filter((_,j) => j!==i); setLandingContent(c => ({ ...c, stats:a })); }} style={{ ...btn('#fff','#ef4444'), padding:'6px 8px', border:'1px solid #fecaca', marginTop:18 }}>✕</button>
+            {/* ── LANDING TAB ── */}
+            {activePageTab==='landing' && (
+              <div>
+                <Section title="🏠 Hero Section">
+                  <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
+                    <div><Label>Hero Title</Label><input style={inp()} value={(landingContent.hero_title as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_title:e.target.value}))}/></div>
+                    <div><Label>Hero Subtitle</Label><textarea style={{...inp(),resize:'vertical',height:72}} value={(landingContent.hero_subtitle as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_subtitle:e.target.value}))}/></div>
+                    <div><Label>Badge Text</Label><input style={inp()} value={(landingContent.hero_badge as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_badge:e.target.value}))}/></div>
+                    <Grid2>
+                      <div><Label>CTA Primary</Label><input style={inp()} value={(landingContent.cta_primary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_primary:e.target.value}))}/></div>
+                      <div><Label>CTA Secondary</Label><input style={inp()} value={(landingContent.cta_secondary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_secondary:e.target.value}))}/></div>
+                    </Grid2>
+                  </div>
+                </Section>
+                <Section title="📊 Stats">
+                  {((landingContent.stats as Array<{value:string;label:string}>)||[]).map((s,i)=>(
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 32px',gap:10,marginBottom:10,alignItems:'center'}}>
+                      <div><Label>Nilai</Label><input style={inp()} value={s.value} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],value:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
+                      <div><Label>Label</Label><input style={inp()} value={s.label} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],label:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
+                      <button onClick={()=>{const a=((landingContent.stats as Array<{value:string;label:string}>)||[]).filter((_,j)=>j!==i);setLandingContent(c=>({...c,stats:a}));}} style={{...btn('#fff','#ef4444'),padding:'6px 8px',border:'1px solid #fecaca',marginTop:18}}>✕</button>
+                    </div>
+                  ))}
+                  <button onClick={()=>setLandingContent(c=>({...c,stats:[...((c.stats as Array<{value:string;label:string}>)||[]),{value:'',label:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'8px 14px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Stat</button>
+                </Section>
+                <Section title="🎯 CTA Banner">
+                  <div><Label>Tajuk</Label><input style={inp()} value={(landingContent.cta_banner_title as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_title:e.target.value}))}/></div>
+                  <div style={{marginTop:12}}><Label>Deskripsi</Label><textarea style={{...inp(),resize:'vertical',height:64}} value={(landingContent.cta_banner_desc as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_desc:e.target.value}))}/></div>
+                </Section>
+                <button onClick={()=>saveAll(()=>savePageContent('landing',landingContent),{} as object,'Landing page disimpan')} style={{...btn(),padding:'13px 28px',boxShadow:'0 4px 16px rgba(0,0,0,.15)'}}>
+                  {savedOk?'✓ Saved!':'💾 Simpan Landing Page'}
+                </button>
+              </div>
+            )}
+
+            {/* ── OUR STORY TAB ── */}
+            {activePageTab==='our-story' && (
+              <div>
+                <Section title="🌟 Hero">
+                  <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                    <div><Label>Eyebrow (small text atas)</Label><input style={inp()} value={(storyContent.hero_eyebrow as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_eyebrow:e.target.value}))}/></div>
+                    <div><Label>Hero Title</Label><input style={inp()} value={(storyContent.hero_title as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_title:e.target.value}))}/></div>
+                    <div><Label>Hero Subtitle</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.hero_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_subtitle:e.target.value}))}/></div>
+                  </div>
+                </Section>
+
+                <Section title="📅 Timeline Sections">
+                  {((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).map((s,i)=>(
+                    <div key={i} style={{background:'#f8f8f7',borderRadius:12,padding:'16px',marginBottom:12}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                        <span style={{fontSize:12,fontWeight:700,color:'#6b7280'}}>Section {i+1}</span>
+                        <button onClick={()=>{const a=((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,story_sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'#fff0f0',border:'1px solid #fecaca',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontFamily:'inherit'}}>✕ Buang</button>
+                      </div>
+                      <Grid2>
+                        <div><Label>Tahun / Era</Label><input style={inp()} value={s.year} placeholder="2024" onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],year:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                        <div><Label>Tajuk</Label><input style={inp()} value={s.title} placeholder="The Problem" onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                      </Grid2>
+                      <div style={{marginTop:10}}><Label>Isi Cerita</Label><textarea style={{...inp(),resize:'vertical',height:72}} value={s.body} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                    </div>
+                  ))}
+                  <button onClick={()=>setStoryContent(c=>({...c,story_sections:[...((c.story_sections as Array<{year:string;title:string;body:string}>)||[]),{year:'',title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 16px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Section</button>
+                </Section>
+
+                <Section title="🎯 Mission & Vision">
+                  <Grid2>
+                    <div><Label>Mission Title</Label><input style={inp()} value={(storyContent.mission_title as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_title:e.target.value}))}/></div>
+                    <div><Label>Vision Title</Label><input style={inp()} value={(storyContent.vision_title as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_title:e.target.value}))}/></div>
+                  </Grid2>
+                  <div style={{marginTop:12}}><Label>Mission Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.mission_body as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_body:e.target.value}))}/></div>
+                  <div style={{marginTop:12}}><Label>Vision Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.vision_body as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_body:e.target.value}))}/></div>
+                </Section>
+
+                <Section title="💎 Values">
+                  {((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).map((v,i)=>(
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'60px 1fr 1fr 32px',gap:10,marginBottom:10,alignItems:'center'}}>
+                      <div><Label>Icon</Label><input style={inp()} value={v.icon} placeholder="⚡" onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],icon:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                      <div><Label>Title</Label><input style={inp()} value={v.title} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                      <div><Label>Description</Label><input style={inp()} value={v.desc} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],desc:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                      <button onClick={()=>{const a=((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,values:a}));}} style={{...btn('#fff','#ef4444'),padding:'6px 8px',border:'1px solid #fecaca',marginTop:18}}>✕</button>
+                    </div>
+                  ))}
+                  <button onClick={()=>setStoryContent(c=>({...c,values:[...((c.values as Array<{icon:string;title:string;desc:string}>)||[]),{icon:'✦',title:'',desc:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'8px 14px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Value</button>
+                </Section>
+
+                <Section title="🔗 CTA Section">
+                  <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                    <div><Label>Title</Label><input style={inp()} value={(storyContent.cta_title as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_title:e.target.value}))}/></div>
+                    <div><Label>Subtitle</Label><input style={inp()} value={(storyContent.cta_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_subtitle:e.target.value}))}/></div>
+                    <div><Label>Button Text</Label><input style={inp()} value={(storyContent.cta_button as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_button:e.target.value}))}/></div>
+                  </div>
+                </Section>
+
+                <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                  <button onClick={()=>saveAll(()=>savePageContent('our-story',storyContent),{} as object,'Our Story disimpan')} style={{...btn(),padding:'13px 28px',boxShadow:'0 4px 16px rgba(0,0,0,.15)'}}>
+                    {savedOk?'✓ Saved!':'💾 Simpan Our Story'}
+                  </button>
+                  <a href="/our-story" target="_blank" style={{fontSize:13,color:'#6b7280',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>
+                    👁 Preview →
+                  </a>
                 </div>
-              ))}
-              <button onClick={() => setLandingContent(c => ({ ...c, stats:[...((c.stats as Array<{value:string;label:string}>)||[]), { value:'', label:'' }] }))} style={{ ...btn('#f3f4f6','#374151'), padding:'8px 14px', border:'1px solid #e5e7eb', fontSize:12 }}>+ Tambah Stat</button>
-            </Section>
+              </div>
+            )}
 
-            <Section title="🎯 CTA Banner">
-              <div><Label>Tajuk</Label><input style={inp()} value={(landingContent.cta_banner_title as string)||''} onChange={e => setLandingContent(c => ({ ...c, cta_banner_title:e.target.value }))}/></div>
-              <div style={{ marginTop:12 }}><Label>Deskripsi</Label><textarea style={{ ...inp(), resize:'vertical', height:64 }} value={(landingContent.cta_banner_desc as string)||''} onChange={e => setLandingContent(c => ({ ...c, cta_banner_desc:e.target.value }))}/></div>
-            </Section>
+            {/* ── TERMS TAB ── */}
+            {activePageTab==='terms' && (
+              <div>
+                <Section title="📋 Header">
+                  <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                    <div><Label>Last Updated</Label><input style={inp()} value={(termsContent.last_updated as string)||''} placeholder="January 2024" onChange={e=>setTermsContent(c=>({...c,last_updated:e.target.value}))}/></div>
+                    <div><Label>Intro Paragraph</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(termsContent.intro as string)||''} onChange={e=>setTermsContent(c=>({...c,intro:e.target.value}))}/></div>
+                  </div>
+                </Section>
 
-            <button onClick={() => saveAll(() => savePageContent('landing', landingContent), {} as object, 'Landing page disimpan')} style={{ ...btn(), padding:'13px 28px', boxShadow:'0 4px 16px rgba(0,0,0,.15)' }}>
-              {savedOk ? '✓ Saved!' : '💾 Simpan Landing Page'}
-            </button>
+                <Section title="📝 Sections">
+                  {((termsContent.sections as Array<{title:string;body:string}>)||[]).map((s,i)=>(
+                    <div key={i} style={{background:'#f8f8f7',borderRadius:12,padding:'16px',marginBottom:10}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                        <span style={{fontSize:12,fontWeight:700,color:'#6b7280'}}>Section {i+1}</span>
+                        <button onClick={()=>{const a=((termsContent.sections as Array<{title:string;body:string}>)||[]).filter((_,j)=>j!==i);setTermsContent(c=>({...c,sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'#fff0f0',border:'1px solid #fecaca',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontFamily:'inherit'}}>✕ Buang</button>
+                      </div>
+                      <div><Label>Heading</Label><input style={inp()} value={s.title} placeholder="1. Services" onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
+                      <div style={{marginTop:10}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:96}} value={s.body} onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
+                    </div>
+                  ))}
+                  <button onClick={()=>setTermsContent(c=>({...c,sections:[...((c.sections as Array<{title:string;body:string}>)||[]),{title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 16px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Section</button>
+                </Section>
+
+                <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                  <button onClick={()=>saveAll(()=>savePageContent('terms',termsContent),{} as object,'Terms disimpan')} style={{...btn(),padding:'13px 28px',boxShadow:'0 4px 16px rgba(0,0,0,.15)'}}>
+                    {savedOk?'✓ Saved!':'💾 Simpan Terms'}
+                  </button>
+                  <a href="/terms" target="_blank" style={{fontSize:13,color:'#6b7280',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>
+                    👁 Preview →
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ══ PLUGINS ══════════════════════════════════════════ */}
+                {/* ══ PLUGINS ══════════════════════════════════════════ */}
         {tab==='plugins' && (
           <div style={{ maxWidth:800 }}>
             <div style={{ marginBottom:22 }}><h1 style={{ fontSize:22,fontWeight:700,color:'#0F0F0F',margin:'0 0 4px',letterSpacing:'-0.03em' }}>Plugins & Integrations</h1><p style={{ fontSize:13,color:'#6b7280',margin:0 }}>Sambungkan servis luar untuk perluas fungsi admin.</p></div>

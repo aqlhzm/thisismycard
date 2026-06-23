@@ -255,11 +255,54 @@ export async function savePaymentSettings(p: Partial<PaymentSettings>) {
 }
 
 // ── Page Content ──────────────────────────────────────────────────────────
+const PAGE_DEFAULTS: Record<string, Record<string, unknown>> = {
+  'our-story': {
+    hero_eyebrow: 'Our Story',
+    hero_title: 'We built the card we always wanted.',
+    hero_subtitle: 'ThisIsMyCard was born from a simple frustration — business cards that go straight into the bin.',
+    story_sections: [
+      { year:'2022', title:'The Problem', body:'Every networking event ended the same way — exchanging physical cards that would never be seen again.' },
+      { year:'2023', title:'The Idea', body:'NFC technology had been in phones for years, but no one had made it truly seamless for professionals in Malaysia.' },
+      { year:'2024', title:'The Launch', body:'ThisIsMyCard launched with one mission: make professional networking as simple as a tap.' },
+    ],
+    mission_title:'Our Mission', mission_body:'To make every professional connection count — instantly and beautifully.',
+    vision_title:'Our Vision', vision_body:'A world where your identity is always just one tap away.',
+    values:[
+      { icon:'⚡', title:'Simplicity', desc:'If it needs an instruction manual, we did it wrong.' },
+      { icon:'💎', title:'Premium Quality', desc:'Every card we ship represents you. It has to be perfect.' },
+      { icon:'🇲🇾', title:'Made for Malaysia', desc:'Built for Malaysian professionals, priced for Malaysian budgets.' },
+      { icon:'🔄', title:'Always Evolving', desc:'Your card grows with your career. Update anytime, forever.' },
+    ],
+    cta_title:'Ready to tap into the future?',
+    cta_subtitle:'Join thousands of professionals who have already made the switch.',
+    cta_button:'Get Your Card →',
+  },
+  'terms': {
+    last_updated:'January 2024',
+    intro:'Please read these Terms and Conditions carefully before using ThisIsMyCard services.',
+    sections:[
+      { title:'1. Services', body:'ThisIsMyCard provides NFC-enabled digital business cards that allow users to share their professional contact information via NFC technology.' },
+      { title:'2. Orders & Payment', body:'All orders are subject to availability. Payment must be completed before processing begins. We accept FPX and bank transfer.' },
+      { title:'3. Delivery', body:'Standard delivery takes 5-7 business days within Peninsular Malaysia. Express delivery available at additional cost.' },
+      { title:'4. Profile Setup', body:'Customers are responsible for providing accurate information. Profile updates can be made at any time through our portal.' },
+      { title:'5. Refunds & Returns', body:'Due to the personalized nature, refunds are only for defective cards. Requests within 7 days of receiving the card.' },
+      { title:'6. Privacy & Data', body:'We collect personal information necessary to provide our services. Your data is stored securely and never sold.' },
+      { title:'7. Governing Law', body:'These Terms are governed by the laws of Malaysia. Any disputes shall be resolved in Malaysian courts.' },
+    ],
+  },
+};
+
 export async function getPageContent(page: string): Promise<PageContent | null> {
   try {
     const { data } = await admin().from('page_content').select('*').eq('page', page).single();
-    return data as PageContent;
-  } catch { return null; }
+    if (data) return data as PageContent;
+    // Return defaults if page not in DB yet
+    if (PAGE_DEFAULTS[page]) return { page, content: PAGE_DEFAULTS[page] };
+    return null;
+  } catch {
+    if (PAGE_DEFAULTS[page]) return { page, content: PAGE_DEFAULTS[page] };
+    return null;
+  }
 }
 
 export async function savePageContent(page: string, content: Record<string, unknown>) {

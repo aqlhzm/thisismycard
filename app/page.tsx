@@ -675,10 +675,22 @@ function Landing({ sv }: { sv:(v:AppView)=>void }) {
           )}
         </div>
         <p style={{ fontSize:13,color:th.textMuted,margin:0 }}>© 2024 ThisIsMyCard. All rights reserved.</p>
-        <button onClick={()=>{ window.location.href='/admin'; }} style={{ fontSize:12,color:th.textMuted,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',transition:'color 0.2s' }}
-          onMouseOver={e=>e.currentTarget.style.color=th.text} onMouseOut={e=>e.currentTarget.style.color=th.textMuted}>
-          Admin Portal →
-        </button>
+        <div style={{ display:'flex',gap:20,alignItems:'center' }}>
+          <a href="/our-story" style={{ fontSize:12,color:th.textMuted,textDecoration:'none',transition:'color 0.2s' }}
+            onMouseOver={(e:React.MouseEvent<HTMLAnchorElement>)=>e.currentTarget.style.color=th.text}
+            onMouseOut={(e:React.MouseEvent<HTMLAnchorElement>)=>e.currentTarget.style.color=th.textMuted}>
+            Our Story
+          </a>
+          <a href="/terms" style={{ fontSize:12,color:th.textMuted,textDecoration:'none',transition:'color 0.2s' }}
+            onMouseOver={(e:React.MouseEvent<HTMLAnchorElement>)=>e.currentTarget.style.color=th.text}
+            onMouseOut={(e:React.MouseEvent<HTMLAnchorElement>)=>e.currentTarget.style.color=th.textMuted}>
+            Terms
+          </a>
+          <button onClick={()=>{ window.location.href='/admin'; }} style={{ fontSize:12,color:th.textMuted,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',transition:'color 0.2s' }}
+            onMouseOver={e=>e.currentTarget.style.color=th.text} onMouseOut={e=>e.currentTarget.style.color=th.textMuted}>
+            Admin →
+          </button>
+        </div>
       </footer>
     </div>
   );
