@@ -313,8 +313,8 @@ async function sendConfirmationEmail(orderId: string) {
 // ── DB Health Check ──────────────────────────────────────────────────────
 export async function checkDbConnected(): Promise<boolean> {
   try {
-    // Try to query the orders table — if it exists, DB is set up
-    const { error } = await admin().from('orders').select('id').limit(1);
+    // Check products table (created in migration 002 which user ran)
+    const { error } = await admin().from('products').select('id').limit(1);
     return !error;
   } catch { return false; }
 }
