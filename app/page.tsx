@@ -101,7 +101,7 @@ function Landing({ sv }: { sv:(v:AppView)=>void }) {
           <span style={{ fontWeight:600,fontSize:15,color:'#0F0F0F',letterSpacing:'-0.02em' }}>ThisIsMyCard</span>
         </div>
         <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-          <button onClick={()=>sv('admin_login')} style={{
+          <button onClick={()=>{ window.location.href='/admin'; }} style={{
             fontSize:14,color:'#6b7280',background:'none',border:'none',cursor:'pointer',
             padding:'8px 16px',borderRadius:8,fontFamily:'inherit',fontWeight:500,
           }}
@@ -326,7 +326,7 @@ function Landing({ sv }: { sv:(v:AppView)=>void }) {
           <span style={{ fontSize:14,fontWeight:500,color:'#6b7280' }}>ThisIsMyCard</span>
         </div>
         <p style={{ fontSize:13,color:'#9ca3af',margin:0 }}>© 2024 ThisIsMyCard. All rights reserved.</p>
-        <button onClick={()=>sv('admin_login')} style={{
+        <button onClick={()=>{ window.location.href='/admin'; }} style={{
           fontSize:13,color:'#9ca3af',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',
         }}
         onMouseOver={e=>e.currentTarget.style.color='#374151'}

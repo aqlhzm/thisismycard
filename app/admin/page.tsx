@@ -198,6 +198,7 @@ export default function AdminPage() {
   const [landingContent, setLandingContent] = useState<Record<string, unknown>>({});
   const [plugins,   setPlugins]  = useState<Array<{ plugin_key:string; enabled:boolean; config:Record<string,string> }>>([]);
   const [loading,   setLoading]  = useState(true);
+  const [isSeedData, setIsSeedData] = useState(false);
 
   // orders UI
   const [selOrder,   setSelOrder]   = useState<Order | null>(null);
@@ -226,7 +227,11 @@ export default function AdminPage() {
       getAllOrders(), getOrderStats(), getProducts(), getCompanyProfile(),
       getPaymentSettings(), getAdminSettings(), getPageContent('landing'), getPlugins(),
     ]);
-    if (oRes.orders)  setOrders(oRes.orders);
+    if (oRes.orders) {
+      setOrders(oRes.orders);
+      // Detect if we're using seed data (ids start with 'seed-')
+      setIsSeedData(oRes.orders.some(o => o.id.startsWith('seed-')));
+    }
     setStats(stRes);
     if (pRes.products) setProducts(pRes.products);
     if (cRes)   setCompany(cRes);
@@ -281,8 +286,25 @@ export default function AdminPage() {
   return (
     <div style={{ ...F, display:'flex', minHeight:'100vh', background:'#f7f7f6' }}>
 
+      {/* ── Setup Banner ── */}
+      {isSeedData && (
+        <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, background:'linear-gradient(90deg,#f59e0b,#d97706)', padding:'10px 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:16 }}>⚠️</span>
+            <div>
+              <span style={{ fontSize:13, fontWeight:700, color:'#0F0F0F' }}>Supabase belum dikonfigurasi — </span>
+              <span style={{ fontSize:13, color:'#0F0F0F' }}>Data yang ditunjukkan adalah contoh. Run SQL migration untuk sambungkan database sebenar.</span>
+            </div>
+          </div>
+          <a href="https://supabase.com/dashboard/project/zqaxufcfappmlqldjryb/sql/new" target="_blank" rel="noreferrer"
+            style={{ background:'#0F0F0F', color:'#fff', padding:'6px 14px', borderRadius:8, fontSize:12, fontWeight:700, textDecoration:'none', whiteSpace:'nowrap', flexShrink:0 }}>
+            Run SQL →
+          </a>
+        </div>
+      )}
+
       {/* ── Sidebar ── */}
-      <aside style={{ width:220, background:'#0F0F0F', display:'flex', flexDirection:'column', flexShrink:0, position:'sticky', top:0, height:'100vh', overflowY:'auto' }}>
+      <aside style={{ width:220, background:'#0F0F0F', display:'flex', flexDirection:'column', flexShrink:0, position:'sticky', top: isSeedData ? 44 : 0, height: isSeedData ? 'calc(100vh - 44px)' : '100vh', overflowY:'auto' }}>
         <div style={{ padding:'22px 20px 16px', borderBottom:'1px solid rgba(255,255,255,.06)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             {company.logo_url
