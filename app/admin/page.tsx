@@ -121,8 +121,13 @@ function ImageUploader({ label, current, onUpload, bucket }: { label:string; cur
       <div onClick={() => !loading && ref.current?.click()} style={{ display:'flex', alignItems:'center', gap:12, padding:12, border:`2px dashed ${errMsg ? '#ef4444' : '#e5e7eb'}`, borderRadius:10, cursor: loading ? 'wait' : 'pointer', transition:'all .15s', opacity: loading ? 0.7 : 1 }}
         onMouseOver={e => { if (!loading) (e.currentTarget as HTMLElement).style.borderColor='#00D4FF'; }}
         onMouseOut={e  => { (e.currentTarget as HTMLElement).style.borderColor = errMsg ? '#ef4444' : '#e5e7eb'; }}>
-        {displayImg
-          ? <img src={displayImg} alt="" style={{ width:56, height:56, objectFit:'contain', borderRadius:8, background:'#f3f4f6', flexShrink:0, border:'2px solid #e5e7eb' }}/>
+        {displayImg && displayImg.length > 10
+          ? <img
+              src={displayImg}
+              alt="preview"
+              style={{ width:56, height:56, objectFit:'cover', borderRadius:8, background:'#f3f4f6', flexShrink:0, border:'2px solid #00D4FF' }}
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display='none'; }}
+            />
           : <div style={{ width:56, height:56, background:'#f3f4f6', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🖼️</div>
         }
         <div style={{ flex:1, minWidth:0 }}>
@@ -134,12 +139,27 @@ function ImageUploader({ label, current, onUpload, bucket }: { label:string; cur
         <input ref={ref} type="file" accept="image/*" style={{ display:'none' }} onChange={handle}/>
       </div>
       {errMsg && <p style={{ fontSize:12, color:'#ef4444', margin:'6px 0 0', display:'flex', alignItems:'center', gap:4 }}>⚠️ {errMsg}</p>}
-      {displayImg && (
-        <div style={{ marginTop:8, display:'flex', alignItems:'center', gap:8 }}>
-          <img src={displayImg} alt="preview" style={{ height:48, width:'auto', maxWidth:160, borderRadius:8, objectFit:'contain', border:'1px solid #e5e7eb', background:'#f9fafb' }}/>
-          <button onClick={e => { e.stopPropagation(); onUpload(''); setPreview(''); }} style={{ fontSize:11, color:'#ef4444', border:'none', cursor:'pointer', fontFamily:'inherit', padding:'4px 8px', borderRadius:6, background:'#fff0f0' }}>
-            ✕ Buang
-          </button>
+      {displayImg && displayImg.length > 10 && (
+        <div style={{ marginTop:10, display:'flex', alignItems:'flex-start', gap:10 }}>
+          <div style={{ position:'relative', flexShrink:0 }}>
+            <img
+              src={displayImg}
+              alt="preview"
+              style={{ height:64, width:'auto', maxWidth:200, borderRadius:10, objectFit:'contain', border:'1px solid #e5e7eb', background:'#f9fafb', display:'block' }}
+              onError={e => { (e.currentTarget as HTMLImageElement).parentElement!.style.display='none'; }}
+            />
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            <p style={{ fontSize:11, color:'#22c55e', fontWeight:600, margin:0 }}>✅ Gambar berjaya dimuatnaik</p>
+            <p style={{ fontSize:10, color:'#9ca3af', margin:0, wordBreak:'break-all', maxWidth:160 }}>
+              {displayImg.startsWith('data:') ? 'Saved locally' : displayImg.slice(0,50)+'...'}
+            </p>
+            <button
+              onClick={e => { e.stopPropagation(); onUpload(''); setPreview(''); }}
+              style={{ fontSize:11, color:'#ef4444', border:'1px solid #fecaca', cursor:'pointer', fontFamily:'inherit', padding:'3px 8px', borderRadius:6, background:'#fff0f0', width:'fit-content' }}>
+              ✕ Buang
+            </button>
+          </div>
         </div>
       )}
     </div>

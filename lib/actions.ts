@@ -144,14 +144,14 @@ export async function getCompanyProfile(): Promise<CompanyProfile | null> {
 export async function saveCompanyProfile(p: Partial<CompanyProfile>) {
   try {
     const sb = admin();
-    // Strip any base64 data URLs if they sneak through (use empty string instead)
-    // Real URLs from storage are fine; base64 can be too large for DB
+    // Allow base64 for small images (logos etc) — they work fine in TEXT columns
+    // Strip only if extremely large (>2MB base64 = ~1.5MB file)
     const clean = { ...p };
-    if (clean.logo_url && clean.logo_url.startsWith('data:') && clean.logo_url.length > 500000) {
-      // Too large for DB — skip, keep previous
+    if (clean.logo_url && clean.logo_url.startsWith('data:') && clean.logo_url.length > 2000000) {
+      console.warn('Logo too large for DB, stripping');
       delete clean.logo_url;
     }
-    if (clean.hero_image_url && clean.hero_image_url.startsWith('data:') && clean.hero_image_url.length > 500000) {
+    if (clean.hero_image_url && clean.hero_image_url.startsWith('data:') && clean.hero_image_url.length > 2000000) {
       delete clean.hero_image_url;
     }
 

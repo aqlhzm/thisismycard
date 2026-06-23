@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import NFCCardVisual from '@/components/shared/NFCCardVisual';
 import StatusBadge, { STATUS_OPTIONS } from '@/components/shared/StatusBadge';
-import { submitOrder, adminLogin, getAllOrders, updateOrderStatus } from '@/lib/actions';
+import { submitOrder, adminLogin, getAllOrders, updateOrderStatus, getCompanyProfile } from '@/lib/actions';
 import type { CardColor, Order, OrderStatus, AppView } from '@/types';
 
 /* ─────────── shared constants ─────────── */
@@ -255,6 +255,16 @@ function Landing({ sv }: { sv:(v:AppView)=>void }) {
   const [activeColor, setActiveColor] = useState<CardColor>('black');
   const [lang, setLang] = useState<LangCode>('en');
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [companyName, setCompanyName] = useState('ThisIsMyCard');
+
+  // Load company profile for logo + name
+  useEffect(()=>{
+    getCompanyProfile().then(p => {
+      if (p?.logo_url) setLogoUrl(p.logo_url);
+      if (p?.name) setCompanyName(p.name);
+    }).catch(()=>{});
+  }, []);
 
   const t = LANGS[lang];
   const th = THEMES[activeColor];
@@ -292,10 +302,26 @@ function Landing({ sv }: { sv:(v:AppView)=>void }) {
       }}>
         {/* Logo */}
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <div style={{ width:32,height:32,background:th.accent,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:`0 2px 12px ${th.accentGlow}` }}>
-            <span style={{ color:th.accentText,fontSize:13,fontWeight:800 }}>N</span>
-          </div>
-          <span style={{ fontWeight:700,fontSize:15,color:th.text,letterSpacing:'-0.02em' }}>ThisIsMyCard</span>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={companyName}
+              style={{
+                height:32,
+                maxWidth:140,
+                objectFit:'contain',
+                borderRadius: logoUrl.includes('data:') ? 8 : 0,
+                filter: activeColor==='white' ? 'none' : 'brightness(1)',
+              }}
+            />
+          ) : (
+            <>
+              <div style={{ width:32,height:32,background:th.accent,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:`0 2px 12px ${th.accentGlow}` }}>
+                <span style={{ color:th.accentText,fontSize:13,fontWeight:800 }}>N</span>
+              </div>
+              <span style={{ fontWeight:700,fontSize:15,color:th.text,letterSpacing:'-0.02em' }}>{companyName}</span>
+            </>
+          )}
         </div>
         {/* Right nav */}
         <div style={{ display:'flex',alignItems:'center',gap:4 }}>
@@ -615,10 +641,16 @@ function Landing({ sv }: { sv:(v:AppView)=>void }) {
       {/* ── Footer ── */}
       <footer style={{ padding:'28px 48px',borderTop:`1px solid ${th.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',transition:'border-color 0.4s' }}>
         <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-          <div style={{ width:24,height:24,background:th.accent,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',transition:'background 0.4s' }}>
-            <span style={{ color:th.accentText,fontSize:10,fontWeight:800 }}>N</span>
-          </div>
-          <span style={{ fontSize:14,fontWeight:600,color:th.textSub }}>ThisIsMyCard</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt={companyName} style={{ height:24, maxWidth:120, objectFit:'contain', opacity:0.7 }}/>
+          ) : (
+            <>
+              <div style={{ width:24,height:24,background:th.accent,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',transition:'background 0.4s' }}>
+                <span style={{ color:th.accentText,fontSize:10,fontWeight:800 }}>N</span>
+              </div>
+              <span style={{ fontSize:14,fontWeight:600,color:th.textSub }}>{companyName}</span>
+            </>
+          )}
         </div>
         <p style={{ fontSize:13,color:th.textMuted,margin:0 }}>© 2024 ThisIsMyCard. All rights reserved.</p>
         <button onClick={()=>{ window.location.href='/admin'; }} style={{ fontSize:12,color:th.textMuted,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',transition:'color 0.2s' }}
