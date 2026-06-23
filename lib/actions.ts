@@ -142,24 +142,63 @@ export async function getCompanyProfile(): Promise<CompanyProfile | null> {
 
 export async function saveCompanyProfile(p: Partial<CompanyProfile>) {
   try {
-    const { data: ex } = await admin().from('company_profile').select('id').single();
-    if (ex) { const { error } = await admin().from('company_profile').update(p).eq('id', (ex as {id:string}).id); if (error) throw error; }
-    else     { const { error } = await admin().from('company_profile').insert(p); if (error) throw error; }
+    const sb = admin();
+    // Strip any base64 data URLs if they sneak through (use empty string instead)
+    // Real URLs from storage are fine; base64 can be too large for DB
+    const clean = { ...p };
+    if (clean.logo_url && clean.logo_url.startsWith('data:') && clean.logo_url.length > 500000) {
+      // Too large for DB — skip, keep previous
+      delete clean.logo_url;
+    }
+    if (clean.hero_image_url && clean.hero_image_url.startsWith('data:') && clean.hero_image_url.length > 500000) {
+      delete clean.hero_image_url;
+    }
+
+    const { data: ex } = await sb.from('company_profile').select('id').single();
+    if (ex) {
+      const { error } = await sb.from('company_profile').update(clean).eq('id', (ex as {id:string}).id);
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from('company_profile').insert(clean);
+      if (error) throw error;
+    }
     return { success: true };
   } catch (e: unknown) { return { success: false, error: (e as Error).message }; }
 }
 
 export async function uploadAsset(base64: string, filename: string, bucket: string): Promise<{ url?: string; error?: string }> {
   try {
-    const ext  = filename.split('.').pop() || 'jpg';
+    const sb   = admin();
+    const ext  = (filename.split('.').pop() || 'jpg').toLowerCase().replace('jpeg','jpg');
     const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const buf  = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
     const mime = base64.startsWith('data:') ? base64.split(';')[0].split(':')[1] : `image/${ext}`;
-    const { error } = await admin().storage.from(bucket).upload(path, buf, { contentType: mime, upsert: true });
-    if (error) throw error;
-    const { data } = admin().storage.from(bucket).getPublicUrl(path);
+    const buf  = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+
+    // Ensure bucket exists
+    const { data: buckets } = await sb.storage.listBuckets();
+    const exists = buckets?.some((b: { name: string }) => b.name === bucket);
+    if (!exists) {
+      const { error: createErr } = await sb.storage.createBucket(bucket, { public: true, fileSizeLimit: 5242880 });
+      if (createErr && !createErr.message.includes('already exists')) {
+        console.error('Bucket create error:', createErr.message);
+      }
+    }
+
+    // Upload
+    const { error: upErr } = await sb.storage.from(bucket).upload(path, buf, { contentType: mime, upsert: true });
+    if (upErr) {
+      // Try update if already exists
+      const { error: updErr } = await sb.storage.from(bucket).update(path, buf, { contentType: mime });
+      if (updErr) throw new Error(`Upload failed: ${upErr.message}`);
+    }
+
+    const { data } = sb.storage.from(bucket).getPublicUrl(path);
     return { url: data.publicUrl };
-  } catch (e: unknown) { return { error: (e as Error).message }; }
+  } catch (e: unknown) {
+    const msg = (e as Error).message;
+    console.error('uploadAsset error:', msg);
+    return { error: msg };
+  }
 }
 
 // ── Products ──────────────────────────────────────────────────────────────

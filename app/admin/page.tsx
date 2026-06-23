@@ -82,34 +82,66 @@ function MiniChart({ data }: { data: Record<string,number> }) {
 /* ─── ImageUploader ─── */
 function ImageUploader({ label, current, onUpload, bucket }: { label:string; current:string; onUpload:(url:string)=>void; bucket:string }) {
   const [loading, setLoading] = useState(false);
+  const [errMsg,  setErrMsg]  = useState('');
+  const [preview, setPreview] = useState('');
   const ref = useRef<HTMLInputElement>(null);
+
   const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
-    setLoading(true);
+    if (f.size > 5 * 1024 * 1024) { setErrMsg('Fail terlalu besar. Max 5MB.'); return; }
+    setLoading(true); setErrMsg('');
+
     const r = new FileReader();
     r.onload = async () => {
-      const res = await uploadAsset(r.result as string, f.name, bucket);
-      if (res.url) onUpload(res.url);
+      const b64 = r.result as string;
+      setPreview(b64); // Show preview immediately
+
+      // Try Supabase storage upload
+      const res = await uploadAsset(b64, f.name, bucket);
+      if (res.url) {
+        onUpload(res.url);
+        setPreview('');
+      } else {
+        // Fallback: use base64 directly (works without storage bucket)
+        console.warn('Storage upload failed, using base64 fallback:', res.error);
+        onUpload(b64);
+        setPreview('');
+      }
       setLoading(false);
     };
+    r.onerror = () => { setErrMsg('Gagal baca fail.'); setLoading(false); };
     r.readAsDataURL(f);
   };
+
+  const displayImg = preview || current;
+
   return (
     <div>
       <Label>{label}</Label>
-      <div onClick={() => ref.current?.click()} style={{ display:'flex', alignItems:'center', gap:12, padding:12, border:'2px dashed #e5e7eb', borderRadius:10, cursor:'pointer', transition:'all .15s' }}
-        onMouseOver={e => { (e.currentTarget as HTMLElement).style.borderColor='#00D4FF'; }}
-        onMouseOut={e  => { (e.currentTarget as HTMLElement).style.borderColor='#e5e7eb'; }}>
-        {current
-          ? <img src={current} alt="" style={{ width:56, height:56, objectFit:'contain', borderRadius:8, background:'#f3f4f6', flexShrink:0 }}/>
+      <div onClick={() => !loading && ref.current?.click()} style={{ display:'flex', alignItems:'center', gap:12, padding:12, border:`2px dashed ${errMsg ? '#ef4444' : '#e5e7eb'}`, borderRadius:10, cursor: loading ? 'wait' : 'pointer', transition:'all .15s', opacity: loading ? 0.7 : 1 }}
+        onMouseOver={e => { if (!loading) (e.currentTarget as HTMLElement).style.borderColor='#00D4FF'; }}
+        onMouseOut={e  => { (e.currentTarget as HTMLElement).style.borderColor = errMsg ? '#ef4444' : '#e5e7eb'; }}>
+        {displayImg
+          ? <img src={displayImg} alt="" style={{ width:56, height:56, objectFit:'contain', borderRadius:8, background:'#f3f4f6', flexShrink:0, border:'2px solid #e5e7eb' }}/>
           : <div style={{ width:56, height:56, background:'#f3f4f6', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🖼️</div>
         }
-        <div>
-          <p style={{ fontSize:13, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>{loading ? 'Uploading…' : current ? 'Click to change' : 'Upload image'}</p>
+        <div style={{ flex:1, minWidth:0 }}>
+          <p style={{ fontSize:13, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>
+            {loading ? '⏳ Uploading…' : displayImg ? '✅ Uploaded — click to change' : 'Click to upload image'}
+          </p>
           <p style={{ fontSize:11, color:'#9ca3af', margin:0 }}>PNG, JPG, WebP — max 5MB</p>
         </div>
         <input ref={ref} type="file" accept="image/*" style={{ display:'none' }} onChange={handle}/>
       </div>
+      {errMsg && <p style={{ fontSize:12, color:'#ef4444', margin:'6px 0 0', display:'flex', alignItems:'center', gap:4 }}>⚠️ {errMsg}</p>}
+      {displayImg && (
+        <div style={{ marginTop:8, display:'flex', alignItems:'center', gap:8 }}>
+          <img src={displayImg} alt="preview" style={{ height:48, width:'auto', maxWidth:160, borderRadius:8, objectFit:'contain', border:'1px solid #e5e7eb', background:'#f9fafb' }}/>
+          <button onClick={e => { e.stopPropagation(); onUpload(''); setPreview(''); }} style={{ fontSize:11, color:'#ef4444', border:'none', cursor:'pointer', fontFamily:'inherit', padding:'4px 8px', borderRadius:6, background:'#fff0f0' }}>
+            ✕ Buang
+          </button>
+        </div>
+      )}
     </div>
   );
 }
