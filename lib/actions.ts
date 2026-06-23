@@ -37,12 +37,11 @@ export async function submitOrder(data: OrderInsert) {
 export async function getAllOrders(): Promise<{ orders?: Order[]; error?: string }> {
   try {
     const { data, error } = await admin().from('orders').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
-    // Return seed data if table empty or doesn't exist
-    if (!data || data.length === 0) return { orders: SEED_ORDERS };
+    // If error, table doesn't exist — use seed
+    if (error) return { orders: SEED_ORDERS };
+    // Table exists — return real data (even if empty array)
     return { orders: data as Order[] };
   } catch {
-    // Supabase table doesn't exist yet — return seed data
     return { orders: SEED_ORDERS };
   }
 }
@@ -93,7 +92,7 @@ export async function getOrderStats() {
       chartData,
     };
   } catch {
-    // fallback: compute stats from seed data
+    // Supabase table doesn't exist — compute from seed
     const rows = SEED_ORDERS;
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
@@ -167,7 +166,8 @@ export async function uploadAsset(base64: string, filename: string, bucket: stri
 export async function getProducts(): Promise<{ products?: Product[]; error?: string }> {
   try {
     const { data, error } = await admin().from('products').select('*').order('sort_order');
-    if (error) throw error;
+    if (error) return { products: SEED_PRODUCTS };
+    // Table exists — if empty, still show seed for UI demo
     if (!data || data.length === 0) return { products: SEED_PRODUCTS };
     return { products: data as Product[] };
   } catch {
@@ -308,6 +308,15 @@ async function sendConfirmationEmail(orderId: string) {
   await sendEmail(o.email, `Setup request received — ${o.order_number}`,
     `<div style="font-family:Arial;max-width:560px;margin:0 auto;padding:24px"><h2>Terima kasih, ${o.full_name}!</h2><p>Request setup kad NFC anda telah diterima. Order No: <strong>${o.order_number}</strong></p><p>Kami akan proses dalam 24–48 jam. Nantikan update daripada kami.</p><p style="color:#999;font-size:12px">© ThisIsMyCard</p></div>`
   );
+}
+
+// ── DB Health Check ──────────────────────────────────────────────────────
+export async function checkDbConnected(): Promise<boolean> {
+  try {
+    // Try to query the orders table — if it exists, DB is set up
+    const { error } = await admin().from('orders').select('id').limit(1);
+    return !error;
+  } catch { return false; }
 }
 
 async function sendStatusEmail(orderId: string, status: OrderStatus) {

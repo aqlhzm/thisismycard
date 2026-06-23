@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   adminLogin, getAllOrders, getOrderStats, updateOrderStatus, deleteOrder, exportOrdersCSV,
+  checkDbConnected,
   getCompanyProfile, saveCompanyProfile, uploadAsset,
   getProducts, saveProduct, deleteProduct,
   getPaymentSettings, savePaymentSettings,
@@ -229,9 +230,10 @@ export default function AdminPage() {
     ]);
     if (oRes.orders) {
       setOrders(oRes.orders);
-      // Detect if we're using seed data (ids start with 'seed-')
-      setIsSeedData(oRes.orders.some(o => o.id.startsWith('seed-')));
     }
+    // Check if DB is actually connected (tables exist)
+    const dbOk = await checkDbConnected();
+    setIsSeedData(!dbOk);
     setStats(stRes);
     if (pRes.products) setProducts(pRes.products);
     if (cRes)   setCompany(cRes);
@@ -288,18 +290,23 @@ export default function AdminPage() {
 
       {/* ── Setup Banner ── */}
       {isSeedData && (
-        <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, background:'linear-gradient(90deg,#f59e0b,#d97706)', padding:'10px 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:16 }}>⚠️</span>
-            <div>
-              <span style={{ fontSize:13, fontWeight:700, color:'#0F0F0F' }}>Supabase belum dikonfigurasi — </span>
-              <span style={{ fontSize:13, color:'#0F0F0F' }}>Data yang ditunjukkan adalah contoh. Run SQL migration untuk sambungkan database sebenar.</span>
-            </div>
+        <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, background:'linear-gradient(90deg,#f59e0b,#d97706)', padding:'10px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, minWidth:0 }}>
+            <span style={{ fontSize:16, flexShrink:0 }}>⚠️</span>
+            <span style={{ fontSize:13, color:'#0F0F0F' }}>
+              <strong>Database belum disambungkan.</strong> Pergi ke Supabase SQL Editor → paste SQL dari repo → Run. Lepas tu refresh halaman ini.
+            </span>
           </div>
-          <a href="https://supabase.com/dashboard/project/zqaxufcfappmlqldjryb/sql/new" target="_blank" rel="noreferrer"
-            style={{ background:'#0F0F0F', color:'#fff', padding:'6px 14px', borderRadius:8, fontSize:12, fontWeight:700, textDecoration:'none', whiteSpace:'nowrap', flexShrink:0 }}>
-            Run SQL →
-          </a>
+          <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+            <a href="https://supabase.com/dashboard/project/zqaxufcfappmlqldjryb/sql/new" target="_blank" rel="noreferrer"
+              style={{ background:'#0F0F0F', color:'#fff', padding:'6px 14px', borderRadius:8, fontSize:12, fontWeight:700, textDecoration:'none', whiteSpace:'nowrap' }}>
+              Buka SQL Editor →
+            </a>
+            <button onClick={() => { setIsSeedData(false); load(); }}
+              style={{ background:'rgba(0,0,0,0.15)', color:'#0F0F0F', padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:600, border:'none', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+              ↻ Semak Semula
+            </button>
+          </div>
         </div>
       )}
 
