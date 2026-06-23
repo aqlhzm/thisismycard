@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {

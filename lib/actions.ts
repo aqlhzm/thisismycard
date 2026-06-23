@@ -32,7 +32,10 @@ export async function submitOrder(data: OrderInsert): Promise<{ success: boolean
 
 // ── Admin Auth ─────────────────────────────────────────────────────────
 export async function adminLogin(email: string, password: string): Promise<{ success: boolean; error?: string }> {
-  if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
+  // Fallback to hardcoded defaults if env vars not set on Vercel
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@thisismycard.io';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@TIMC2024!';
+  if (email.trim().toLowerCase() === adminEmail.trim().toLowerCase() && password === adminPassword) {
     return { success: true };
   }
   return { success: false, error: 'Invalid email or password.' };
