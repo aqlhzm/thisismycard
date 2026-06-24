@@ -254,6 +254,14 @@ export default function AdminPage() {
   const [activePageTab,   setActivePageTab]   = useState<'landing'|'our-story'|'terms'>('landing');
   const [pbDevice,        setPbDevice]        = useState<'desktop'|'mobile'>('desktop');
   const [pbSection,       setPbSection]       = useState<string>('hero');
+  const [pbHistory,       setPbHistory]       = useState<Record<string,Array<Record<string,unknown>>>>({ landing:[], 'our-story':[], terms:[] });
+  const [pbFuture,        setPbFuture]        = useState<Record<string,Array<Record<string,unknown>>>>({ landing:[], 'our-story':[], terms:[] });
+  const [pbSaving,        setPbSaving]        = useState(false);
+  const [pbPublishModal,  setPbPublishModal]  = useState(false);
+  const [notifOpen,       setNotifOpen]       = useState(false);
+  const [bulkSelected,    setBulkSelected]    = useState<string[]>([]);
+  const [bulkStatus,      setBulkStatus]      = useState<OrderStatus|''>('');
+  const [trackingInputs,  setTrackingInputs]  = useState<Record<string,string>>({});
   const [plugins,   setPlugins]  = useState<Array<{ plugin_key:string; enabled:boolean; config:Record<string,string> }>>([]);
   const [loading,     setLoading]    = useState(true);
   const [isSeedData,  setIsSeedData]  = useState(false);
@@ -278,6 +286,63 @@ export default function AdminPage() {
     setToast(m);
     if (toastRef.current) clearTimeout(toastRef.current);
     toastRef.current = setTimeout(() => setToast(''), 3200);
+  };
+
+  // ── Page builder undo/redo ────────────────────────────────────────────────
+  const pbSetContent = (page: 'landing'|'our-story'|'terms', updater: (prev: Record<string,unknown>) => Record<string,unknown>) => {
+    const setters = { landing: setLandingContent, 'our-story': setStoryContent, 'terms': setTermsContent };
+    const getters: Record<string, Record<string,unknown>> = { landing: landingContent, 'our-story': storyContent, 'terms': termsContent };
+    const prev = getters[page];
+    setPbHistory(h => ({ ...h, [page]: [...h[page].slice(-19), prev] }));
+    setPbFuture(f => ({ ...f, [page]: [] }));
+    setters[page](updater(prev) as Record<string,unknown>);
+  };
+
+  const pbUndo = () => {
+    const page = activePageTab;
+    const hist = pbHistory[page];
+    if (!hist.length) return;
+    const prev = hist[hist.length-1] as Record<string,unknown>;
+    const getters: Record<string, Record<string,unknown>> = { landing: landingContent, 'our-story': storyContent, 'terms': termsContent };
+    const setters = { landing: setLandingContent, 'our-story': setStoryContent, 'terms': setTermsContent };
+    setPbFuture(f => ({ ...f, [page]: [...f[page], getters[page]] }));
+    setPbHistory(h => ({ ...h, [page]: h[page].slice(0,-1) }));
+    setters[page](prev);
+    toast$('↩ Undo');
+  };
+
+  const pbRedo = () => {
+    const page = activePageTab;
+    const fut = pbFuture[page];
+    if (!fut.length) return;
+    const next = fut[fut.length-1] as Record<string,unknown>;
+    const getters: Record<string, Record<string,unknown>> = { landing: landingContent, 'our-story': storyContent, 'terms': termsContent };
+    const setters = { landing: setLandingContent, 'our-story': setStoryContent, 'terms': setTermsContent };
+    setPbHistory(h => ({ ...h, [page]: [...h[page], getters[page]] }));
+    setPbFuture(f => ({ ...f, [page]: f[page].slice(0,-1) }));
+    setters[page](next);
+    toast$('↪ Redo');
+  };
+
+  const pbSave = async () => {
+    setPbSaving(true);
+    const saves: Record<string, ()=>Promise<{success:boolean;error?:string}>> = {
+      'landing': ()=>savePageContent('landing',landingContent),
+      'our-story': ()=>savePageContent('our-story',storyContent),
+      'terms': ()=>savePageContent('terms',termsContent),
+    };
+    const r = await saves[activePageTab]();
+    setPbSaving(false);
+    if (r.success) { toast$('✅ Published!'); setPbPublishModal(false); }
+    else toast$('❌ ' + r.error);
+  };
+
+  const doBulkStatus = async () => {
+    if (!bulkStatus || !bulkSelected.length) return;
+    for (const id of bulkSelected) await updateOrderStatus(id, bulkStatus as OrderStatus);
+    setOrders(prev => prev.map(o => bulkSelected.includes(o.id) ? { ...o, status: bulkStatus as OrderStatus } : o));
+    toast$('✅ ' + bulkSelected.length + ' orders updated → ' + bulkStatus);
+    setBulkSelected([]); setBulkStatus('');
   };
 
   const load = useCallback(async () => {
@@ -431,7 +496,33 @@ export default function AdminPage() {
                 <h1 style={{ fontSize:24, fontWeight:700, color:'#0F0F0F', margin:'0 0 4px', letterSpacing:'-0.03em' }}>Dashboard</h1>
                 <p style={{ fontSize:14, color:'#6b7280', margin:0 }}>Selamat datang semula. Berikut adalah ringkasan hari ini.</p>
               </div>
-              <button onClick={() => { setTab('orders'); }} style={{ ...btn(), padding:'9px 18px' }}>+ New Order</button>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <div style={{ position:'relative' }}>
+                  <button onClick={()=>setNotifOpen(n=>!n)} style={{ width:38,height:38,borderRadius:9,border:'1px solid #f0f0f0',background:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 4px rgba(0,0,0,.06)' }}>🔔</button>
+                  {stats.new>0 && <div style={{ position:'absolute',top:-4,right:-4,background:'#ef4444',color:'#fff',fontSize:10,fontWeight:700,width:18,height:18,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center' }}>{stats.new}</div>}
+                  {notifOpen && (
+                    <div style={{ position:'absolute',top:44,right:0,width:320,background:'#fff',borderRadius:14,boxShadow:'0 8px 32px rgba(0,0,0,.15)',border:'1px solid #f0f0f0',zIndex:99,overflow:'hidden' }}>
+                      <div style={{ padding:'14px 16px',borderBottom:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                        <span style={{ fontSize:14,fontWeight:700,color:'#0F0F0F' }}>Notifications</span>
+                        <button onClick={()=>setNotifOpen(false)} style={{ background:'none',border:'none',cursor:'pointer',fontSize:14,color:'#9ca3af' }}>✕</button>
+                      </div>
+                      {orders.filter(o=>o.status==='new').slice(0,5).map(o=>(
+                        <div key={o.id} onClick={()=>{setSelOrder(o);setTab('orders');setNotifOpen(false);}} style={{ padding:'12px 16px',borderBottom:'1px solid #fafafa',cursor:'pointer',display:'flex',gap:10,alignItems:'center' }}
+                          onMouseOver={e=>(e.currentTarget as HTMLElement).style.background='#f8f8f7'}
+                          onMouseOut={e=>(e.currentTarget as HTMLElement).style.background='transparent'}>
+                          <div style={{ width:36,height:36,background:'#eff6ff',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#3b82f6',flexShrink:0 }}>{o.full_name.charAt(0)}</div>
+                          <div style={{ minWidth:0 }}>
+                            <p style={{ fontSize:13,fontWeight:600,color:'#0F0F0F',margin:'0 0 2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>New — {o.full_name}</p>
+                            <p style={{ fontSize:11,color:'#9ca3af',margin:0 }}>{o.company_name} · {o.order_number}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {stats.new===0 && <div style={{ padding:'24px',textAlign:'center',color:'#9ca3af',fontSize:13 }}>No new notifications 🎉</div>}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => { setTab('orders'); }} style={{ ...btn(), padding:'9px 18px' }}>+ New Order</button>
+              </div>
             </div>
 
             {/* KPI row */}
@@ -519,29 +610,46 @@ export default function AdminPage() {
                 <button onClick={doExport} style={{ ...btn('#f3f4f6','#374151'), padding:'9px 16px', border:'1px solid #e5e7eb' }}>⬇ Export CSV</button>
               </div>
 
-              <div style={{ display:'flex', gap:10, marginBottom:14, flexWrap:'wrap' }}>
+              {/* Search + Filter */}
+              <div style={{ display:'flex', gap:10, marginBottom:10, flexWrap:'wrap' as const }}>
                 <div style={{ position:'relative', flex:1, minWidth:200 }}>
                   <span style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', fontSize:13, color:'#9ca3af' }}>🔍</span>
                   <input style={{ ...inp(), paddingLeft:32 }} type="search" placeholder="Search nama, syarikat, order…" value={search} onChange={e => setSearch(e.target.value)}/>
                 </div>
-                <select value={statusF} onChange={e => setStatusF(e.target.value as OrderStatus|'all')} style={inp('auto')}>
+                <select value={statusF} onChange={e => { setStatusF(e.target.value as OrderStatus|'all'); setBulkSelected([]); }} style={inp('auto')}>
                   <option value="all">Semua Status</option>
                   {SO.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 <button onClick={load} style={{ ...btn('#f3f4f6','#374151'), padding:'9px 12px', border:'1px solid #e5e7eb' }}>↻</button>
               </div>
 
+              {/* Bulk Actions Bar */}
+              {bulkSelected.length > 0 && (
+                <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', background:'#eff6ff', borderRadius:10, marginBottom:10, border:'1px solid #bfdbfe' }}>
+                  <span style={{ fontSize:13, fontWeight:600, color:'#1d4ed8' }}>{bulkSelected.length} orders selected</span>
+                  <select value={bulkStatus} onChange={e=>setBulkStatus(e.target.value as OrderStatus|'')} style={{ ...inp('auto'), fontSize:12 }}>
+                    <option value="">Tukar status ke…</option>
+                    {SO.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <button onClick={doBulkStatus} disabled={!bulkStatus} style={{ ...btn('#1d4ed8'), padding:'7px 16px', fontSize:12, opacity:bulkStatus?1:.5 }}>Apply</button>
+                  <button onClick={doExport} style={{ ...btn('#f3f4f6','#374151'), padding:'7px 14px', fontSize:12, border:'1px solid #e5e7eb' }}>⬇ Export Selected</button>
+                  <button onClick={()=>setBulkSelected([])} style={{ marginLeft:'auto', fontSize:11, color:'#6b7280', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>✕ Clear</button>
+                </div>
+              )}
+
               <div style={{ background:'#fff', borderRadius:14, border:'1px solid #f0f0f0', overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
-                <div style={{ display:'grid', gridTemplateColumns:'34px 1fr 120px 110px 140px 80px', gap:10, padding:'10px 18px', background:'#f8f8f7', borderBottom:'1px solid #f0f0f0' }}>
-                  {['','Customer','Order #','Date','Status','Action'].map(h => <div key={h} style={{ fontSize:10,fontWeight:700,letterSpacing:'0.07em',textTransform:'uppercase',color:'#9ca3af' }}>{h}</div>)}
+                <div style={{ display:'grid', gridTemplateColumns:'28px 34px 1fr 120px 110px 140px 80px', gap:10, padding:'10px 18px', background:'#f8f8f7', borderBottom:'1px solid #f0f0f0' }}>
+                  <input type="checkbox" style={{ cursor:'pointer', accentColor:'#0F0F0F' }} checked={bulkSelected.length===filtered.length&&filtered.length>0} onChange={e=>setBulkSelected(e.target.checked?filtered.map(o=>o.id):[])}/>
+                  {['','Customer','Order #','Date','Status','Action'].map(h => <div key={h} style={{ fontSize:10,fontWeight:700,letterSpacing:'0.07em',textTransform:'uppercase' as const,color:'#9ca3af' }}>{h}</div>)}
                 </div>
                 {loading ? <div style={{ padding:40, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Loading…</div>
                   : filtered.length===0 ? <div style={{ padding:48, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Tiada orders.</div>
                   : filtered.map((o,i) => (
-                    <div key={o.id} onClick={() => setSelOrder(o===selOrder?null:o)} style={{ display:'grid', gridTemplateColumns:'34px 1fr 120px 110px 140px 80px', gap:10, padding:'11px 18px', alignItems:'center', cursor:'pointer', background:selOrder?.id===o.id?'#f0fdf4':'transparent', borderBottom:i<filtered.length-1?'1px solid #fafafa':'none' }}
-                      onMouseOver={e => { if(selOrder?.id!==o.id) (e.currentTarget as HTMLElement).style.background='#fafafa'; }}
-                      onMouseOut={e  => { if(selOrder?.id!==o.id) (e.currentTarget as HTMLElement).style.background='transparent'; }}>
-                      <div style={{ width:32,height:32,background:'#f3f4f6',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,color:'#6b7280',fontSize:12 }}>{o.full_name.charAt(0)}</div>
+                    <div key={o.id} style={{ display:'grid', gridTemplateColumns:'28px 34px 1fr 120px 110px 140px 80px', gap:10, padding:'11px 18px', alignItems:'center', background:bulkSelected.includes(o.id)?'#eff6ff':selOrder?.id===o.id?'#f0fdf4':'transparent', borderBottom:i<filtered.length-1?'1px solid #fafafa':'none' }}
+                      onMouseOver={e => { if(!bulkSelected.includes(o.id)&&selOrder?.id!==o.id)(e.currentTarget as HTMLElement).style.background='#fafafa'; }}
+                      onMouseOut={e  => { if(!bulkSelected.includes(o.id)&&selOrder?.id!==o.id)(e.currentTarget as HTMLElement).style.background='transparent'; }}>
+                      <input type="checkbox" style={{ cursor:'pointer', accentColor:'#0F0F0F' }} checked={bulkSelected.includes(o.id)} onChange={e=>{e.stopPropagation();setBulkSelected(p=>e.target.checked?[...p,o.id]:p.filter(id=>id!==o.id));}} onClick={e=>e.stopPropagation()}/>
+                      <div onClick={()=>setSelOrder(o===selOrder?null:o)} style={{ width:32,height:32,background:'#f3f4f6',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,color:'#6b7280',fontSize:12,cursor:'pointer' }}>{o.full_name.charAt(0)}</div>
                       <div style={{ minWidth:0 }}><p style={{ fontSize:13,fontWeight:600,color:'#111',margin:'0 0 1px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{o.full_name}</p><p style={{ fontSize:11,color:'#9ca3af',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{o.company_name}</p></div>
                       <div><p style={{ fontSize:12,fontWeight:600,color:'#374151',margin:'0 0 2px' }}>{o.order_number}</p><div style={{ display:'flex',alignItems:'center',gap:4 }}><div style={{ width:8,height:8,borderRadius:2,background:SWATCH[o.card_color]||'#ccc' }}/><span style={{ fontSize:10,color:'#9ca3af',textTransform:'capitalize' }}>{o.card_color}</span></div></div>
                       <span style={{ fontSize:11,color:'#9ca3af' }}>{fmt(o.created_at)}</span>
@@ -614,12 +722,34 @@ export default function AdminPage() {
                     <div><Label>Notes</Label><p style={{ fontSize:13,color:'#374151',background:'#fefce8',border:'1px solid #fef08a',borderRadius:9,padding:'10px 12px',margin:0,lineHeight:1.6 }}>{selOrder.additional_notes}</p></div>
                   )}
 
+                  {/* Tracking Number */}
+                  <div>
+                    <Label>Tracking Number</Label>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input style={{ ...inp(), flex:1 }}
+                        value={trackingInputs[selOrder.id]||''}
+                        onChange={e=>setTrackingInputs(p=>({...p,[selOrder.id]:e.target.value}))}
+                        placeholder="e.g. EX123456789MY"
+                      />
+                      <button onClick={()=>{
+                        const t=trackingInputs[selOrder.id];
+                        if(t){navigator.clipboard?.writeText(t);toast$('✅ Tracking copied!');}
+                      }} style={{ ...btn('#f3f4f6','#374151'), padding:'9px 12px', border:'1px solid #e5e7eb', fontSize:12 }}>📋</button>
+                    </div>
+                    {trackingInputs[selOrder.id] && (
+                      <a href={`https://www.tracking.my/track?tracking_number=${trackingInputs[selOrder.id]}`} target="_blank" rel="noreferrer"
+                        style={{ fontSize:11, color:'#3b82f6', textDecoration:'none', display:'block', marginTop:5 }}>
+                        🔍 Track parcel →
+                      </a>
+                    )}
+                  </div>
+
                   {/* Actions */}
                   <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                     <button onClick={() => { setEmailOId(selOrder.id); setTab('email'); }} style={{ ...btn(), padding:'10px' }}>✉ Hantar Email</button>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                      <a href={`tel:${selOrder.phone}`} style={{ ...btn('#f0fdf4','#15803d'), display:'block', textAlign:'center', textDecoration:'none', border:'1px solid #bbf7d0' }}>📞 Call</a>
-                      <a href={`https://wa.me/${selOrder.whatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" style={{ ...btn('#f0fdf4','#15803d'), display:'block', textAlign:'center', textDecoration:'none', border:'1px solid #bbf7d0' }}>💬 WA</a>
+                      <a href={`tel:${selOrder.phone}`} style={{ ...btn('#f0fdf4','#15803d'), display:'block', textAlign:'center' as const, textDecoration:'none', border:'1px solid #bbf7d0' }}>📞 Call</a>
+                      <a href={`https://wa.me/${selOrder.whatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" style={{ ...btn('#f0fdf4','#15803d'), display:'block', textAlign:'center' as const, textDecoration:'none', border:'1px solid #bbf7d0' }}>💬 WA</a>
                     </div>
                     <button onClick={() => delOrder(selOrder.id)} style={{ ...btn('#fff','#ef4444'), border:'1px solid #fecaca' }}>🗑 Delete Order</button>
                   </div>
@@ -849,389 +979,387 @@ export default function AdminPage() {
 
             {/* ── Top Bar ── */}
             <div style={{ height:52, background:'#fff', borderBottom:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px', flexShrink:0, boxShadow:'0 1px 4px rgba(0,0,0,.06)' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-                <button onClick={()=>setTab('dashboard')} style={{ fontSize:12, color:'#6b7280', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5 }}>
-                  ← Back
-                </button>
-                <span style={{ width:1, height:18, background:'#e5e7eb' }}/>
-                <span style={{ fontSize:14, fontWeight:700, color:'#0F0F0F' }}>Pages Editor</span>
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <button onClick={()=>setTab('dashboard')} style={{ fontSize:12,color:'#6b7280',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:4 }}>← Back</button>
+                <span style={{ width:1,height:18,background:'#e5e7eb' }}/>
+                <span style={{ fontSize:14,fontWeight:700,color:'#0F0F0F' }}>Pages Editor</span>
               </div>
 
-              {/* Page selector */}
+              {/* Page tabs */}
               <div style={{ display:'flex', gap:4 }}>
                 {([['landing','🏠','Landing'],['our-story','📖','Our Story'],['terms','📋','Terms']] as const).map(([pg,icon,label])=>(
-                  <button key={pg} onClick={()=>setActivePageTab(pg)} style={{
-                    fontSize:12, fontWeight:activePageTab===pg?700:500,
-                    padding:'6px 14px', borderRadius:8, border:'1px solid',
-                    cursor:'pointer', fontFamily:'inherit', transition:'all .12s',
-                    background: activePageTab===pg ? '#0F0F0F' : '#fff',
-                    color: activePageTab===pg ? '#fff' : '#6b7280',
-                    borderColor: activePageTab===pg ? '#0F0F0F' : '#e5e7eb',
-                    display:'flex', alignItems:'center', gap:5,
+                  <button key={pg} onClick={()=>{setActivePageTab(pg);setPbSection('hero');}} style={{
+                    fontSize:12,fontWeight:activePageTab===pg?700:500,padding:'6px 14px',borderRadius:8,border:'1px solid',
+                    cursor:'pointer',fontFamily:'inherit',transition:'all .12s',display:'flex',alignItems:'center',gap:5,
+                    background:activePageTab===pg?'#0F0F0F':'#fff',
+                    color:activePageTab===pg?'#fff':'#6b7280',
+                    borderColor:activePageTab===pg?'#0F0F0F':'#e5e7eb',
                   }}>{icon} {label}</button>
                 ))}
               </div>
 
-              {/* Device + actions */}
+              {/* Device + Undo/Redo + Actions */}
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <div style={{ display:'flex', background:'#f3f4f6', borderRadius:8, padding:2 }}>
+                {/* Undo/Redo */}
+                <button onClick={pbUndo} disabled={!pbHistory[activePageTab]?.length} title="Undo (Ctrl+Z)" style={{ width:32,height:32,borderRadius:7,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',opacity:pbHistory[activePageTab]?.length?1:.4 }}>↩</button>
+                <button onClick={pbRedo} disabled={!pbFuture[activePageTab]?.length} title="Redo" style={{ width:32,height:32,borderRadius:7,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',opacity:pbFuture[activePageTab]?.length?1:.4 }}>↪</button>
+                <span style={{ width:1,height:18,background:'#e5e7eb' }}/>
+                {/* Device */}
+                <div style={{ display:'flex',background:'#f3f4f6',borderRadius:8,padding:2 }}>
                   {([['desktop','🖥'],['mobile','📱']] as const).map(([d,ic])=>(
-                    <button key={d} onClick={()=>setPbDevice(d)} style={{
-                      padding:'5px 10px', borderRadius:6, border:'none', cursor:'pointer',
-                      background: pbDevice===d ? '#fff' : 'transparent',
-                      fontSize:13, boxShadow: pbDevice===d ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
-                      transition:'all .15s',
-                    }}>{ic}</button>
+                    <button key={d} onClick={()=>setPbDevice(d)} style={{ padding:'5px 10px',borderRadius:6,border:'none',cursor:'pointer',background:pbDevice===d?'#fff':'transparent',fontSize:13,boxShadow:pbDevice===d?'0 1px 3px rgba(0,0,0,.1)':'none',transition:'all .15s' }}>{ic}</button>
                   ))}
                 </div>
-                <button onClick={()=>{ const url = activePageTab==='landing'?'/':'/'+activePageTab; window.open(url,'_blank'); }} style={{ fontSize:12, color:'#6b7280', background:'#f3f4f6', border:'1px solid #e5e7eb', cursor:'pointer', padding:'6px 14px', borderRadius:8, fontFamily:'inherit' }}>
-                  👁 Preview
-                </button>
-                <button onClick={()=>{
-                  const saves: Record<string, ()=>Promise<{success:boolean;error?:string}>> = {
-                    'landing': ()=>savePageContent('landing',landingContent),
-                    'our-story': ()=>savePageContent('our-story',storyContent),
-                    'terms': ()=>savePageContent('terms',termsContent),
-                  };
-                  saveAll(saves[activePageTab],{} as object,`${activePageTab} disimpan`);
-                }} style={{ fontSize:12, fontWeight:700, color:'#fff', background:'#0F0F0F', border:'none', cursor:'pointer', padding:'7px 18px', borderRadius:8, fontFamily:'inherit', boxShadow:'0 2px 8px rgba(0,0,0,.15)' }}>
-                  {savedOk ? '✓ Saved' : '💾 Publish'}
+                <button onClick={()=>window.open(activePageTab==='landing'?'/':'/'+activePageTab,'_blank')} style={{ fontSize:12,color:'#6b7280',background:'#f3f4f6',border:'1px solid #e5e7eb',cursor:'pointer',padding:'6px 14px',borderRadius:8,fontFamily:'inherit' }}>👁 Preview</button>
+                <button onClick={()=>setPbPublishModal(true)} style={{ fontSize:12,fontWeight:700,color:'#fff',background:'#0F0F0F',border:'none',cursor:'pointer',padding:'7px 18px',borderRadius:8,fontFamily:'inherit',boxShadow:'0 2px 8px rgba(0,0,0,.15)' }}>
+                  {pbSaving?'Saving…':savedOk?'✓ Published':'🚀 Publish'}
                 </button>
               </div>
             </div>
 
-            {/* ── Main Layout: Sidebar + Preview ── */}
+            {/* ── Publish Modal ── */}
+            {pbPublishModal && (
+              <div style={{ position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',justifyContent:'center' }}>
+                <div style={{ background:'#fff',borderRadius:16,padding:'32px',maxWidth:400,width:'90%',textAlign:'center' }}>
+                  <div style={{ fontSize:40,marginBottom:12 }}>🚀</div>
+                  <h3 style={{ fontSize:18,fontWeight:700,color:'#0F0F0F',margin:'0 0 8px' }}>Publish Changes?</h3>
+                  <p style={{ fontSize:14,color:'#6b7280',margin:'0 0 24px',lineHeight:1.6 }}>Perubahan akan disimpan dan terus live di website. Confirm?</p>
+                  <div style={{ display:'flex',gap:10 }}>
+                    <button onClick={()=>setPbPublishModal(false)} style={{ flex:1,...btn('#f3f4f6','#374151'),border:'1px solid #e5e7eb' }}>Cancel</button>
+                    <button onClick={pbSave} style={{ flex:1,...btn() }}>Yes, Publish!</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Main 3-Panel Layout ── */}
             <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
-              {/* ── Left Panel ── */}
-              <div style={{ width:300, background:'#fff', borderRight:'1px solid #e5e7eb', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+              {/* ── LEFT: Section List ── */}
+              <div style={{ width:260, background:'#fff', borderRight:'1px solid #e5e7eb', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+                <div style={{ padding:'12px 14px 8px', borderBottom:'1px solid #f3f4f6' }}>
+                  <p style={{ fontSize:10,fontWeight:700,color:'#9ca3af',letterSpacing:'0.1em',textTransform:'uppercase' as const,margin:0 }}>Sections</p>
+                </div>
+                <div style={{ flex:1,overflowY:'auto',padding:'8px' }}>
 
-                {/* Section list header */}
-                <div style={{ padding:'14px 16px 10px', borderBottom:'1px solid #f3f4f6' }}>
-                  <p style={{ fontSize:11, fontWeight:700, color:'#9ca3af', letterSpacing:'0.08em', textTransform:'uppercase' as const, margin:0 }}>
-                    {activePageTab==='landing'?'Landing Sections':activePageTab==='our-story'?'Our Story Sections':'Terms Sections'}
-                  </p>
+                  {/* ── Landing Sections ── */}
+                  {activePageTab==='landing' && (['hero','stats','cta'] as const).map((id,i) => {
+                    const meta: Record<string,{icon:string;label:string;desc:string}> = {
+                      hero:  { icon:'🌟', label:'Hero', desc:'Title · Subtitle · CTA' },
+                      stats: { icon:'📊', label:'Stats', desc:'Numbers · Labels' },
+                      cta:   { icon:'🎯', label:'CTA Banner', desc:'Bottom banner' },
+                    };
+                    const m = meta[id];
+                    return (
+                      <button key={id} onClick={()=>setPbSection(id)} style={{ display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:10,border:`1.5px solid ${pbSection===id?'#0F0F0F':'transparent'}`,background:pbSection===id?'#0F0F0F':'transparent',cursor:'pointer',fontFamily:'inherit',textAlign:'left' as const,transition:'all .12s',width:'100%',marginBottom:3 }}
+                        onMouseOver={e=>{if(pbSection!==id)(e.currentTarget as HTMLElement).style.background='#f8f8f7';}}
+                        onMouseOut={e=>{if(pbSection!==id)(e.currentTarget as HTMLElement).style.background='transparent';}}>
+                        <span style={{ fontSize:18,flexShrink:0 }}>{m.icon}</span>
+                        <div><p style={{ fontSize:12,fontWeight:600,color:pbSection===id?'#fff':'#0F0F0F',margin:'0 0 1px' }}>{m.label}</p><p style={{ fontSize:10,color:pbSection===id?'rgba(255,255,255,.5)':'#9ca3af',margin:0 }}>{m.desc}</p></div>
+                      </button>
+                    );
+                  })}
+
+                  {/* ── Our Story Sections ── */}
+                  {activePageTab==='our-story' && (['hero','timeline','mission','values','cta'] as const).map(id => {
+                    const meta: Record<string,{icon:string;label:string;desc:string}> = {
+                      hero:     { icon:'🌟', label:'Hero', desc:'Eyebrow · Title · Subtitle' },
+                      timeline: { icon:'📅', label:'Timeline', desc:'Year · Story sections' },
+                      mission:  { icon:'🎯', label:'Mission & Vision', desc:'Two statement cards' },
+                      values:   { icon:'💎', label:'Values', desc:'Icon · Title · Desc' },
+                      cta:      { icon:'🔗', label:'CTA Section', desc:'Bottom call-to-action' },
+                    };
+                    const m = meta[id];
+                    return (
+                      <button key={id} onClick={()=>setPbSection(id)} style={{ display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:10,border:`1.5px solid ${pbSection===id?'#0F0F0F':'transparent'}`,background:pbSection===id?'#0F0F0F':'transparent',cursor:'pointer',fontFamily:'inherit',textAlign:'left' as const,transition:'all .12s',width:'100%',marginBottom:3 }}
+                        onMouseOver={e=>{if(pbSection!==id)(e.currentTarget as HTMLElement).style.background='#f8f8f7';}}
+                        onMouseOut={e=>{if(pbSection!==id)(e.currentTarget as HTMLElement).style.background='transparent';}}>
+                        <span style={{ fontSize:18,flexShrink:0 }}>{m.icon}</span>
+                        <div><p style={{ fontSize:12,fontWeight:600,color:pbSection===id?'#fff':'#0F0F0F',margin:'0 0 1px' }}>{m.label}</p><p style={{ fontSize:10,color:pbSection===id?'rgba(255,255,255,.5)':'#9ca3af',margin:0 }}>{m.desc}</p></div>
+                      </button>
+                    );
+                  })}
+
+                  {/* ── Terms Sections ── */}
+                  {activePageTab==='terms' && (['header','sections'] as const).map(id => {
+                    const meta: Record<string,{icon:string;label:string;desc:string}> = {
+                      header:   { icon:'📋', label:'Header', desc:'Title · Intro text' },
+                      sections: { icon:'📝', label:'T&C Sections', desc:'All numbered sections' },
+                    };
+                    const m = meta[id];
+                    return (
+                      <button key={id} onClick={()=>setPbSection(id)} style={{ display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:10,border:`1.5px solid ${pbSection===id?'#0F0F0F':'transparent'}`,background:pbSection===id?'#0F0F0F':'transparent',cursor:'pointer',fontFamily:'inherit',textAlign:'left' as const,transition:'all .12s',width:'100%',marginBottom:3 }}
+                        onMouseOver={e=>{if(pbSection!==id)(e.currentTarget as HTMLElement).style.background='#f8f8f7';}}
+                        onMouseOut={e=>{if(pbSection!==id)(e.currentTarget as HTMLElement).style.background='transparent';}}>
+                        <span style={{ fontSize:18,flexShrink:0 }}>{m.icon}</span>
+                        <div><p style={{ fontSize:12,fontWeight:600,color:pbSection===id?'#fff':'#0F0F0F',margin:'0 0 1px' }}>{m.label}</p><p style={{ fontSize:10,color:pbSection===id?'rgba(255,255,255,.5)':'#9ca3af',margin:0 }}>{m.desc}</p></div>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {/* Scrollable section list */}
-                <div style={{ flex:1, overflowY:'auto', padding:'8px' }}>
-
-                  {/* ── LANDING sections ── */}
-                  {activePageTab==='landing' && (
-                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                      {[
-                        { id:'hero',    icon:'🌟', label:'Hero Section',   desc:'Title, subtitle, badge, CTA buttons' },
-                        { id:'stats',   icon:'📊', label:'Stats',          desc:'2,400+ cards · 98% · 48h' },
-                        { id:'cta',     icon:'🎯', label:'CTA Banner',     desc:'Bottom call-to-action banner' },
-                      ].map(s=>(
-                        <button key={s.id} onClick={()=>setPbSection(s.id)} style={{
-                          display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
-                          borderRadius:10, border:`1px solid ${pbSection===s.id?'#0F0F0F':'transparent'}`,
-                          background: pbSection===s.id ? '#0F0F0F' : 'transparent',
-                          cursor:'pointer', fontFamily:'inherit', textAlign:'left' as const,
-                          transition:'all .15s', width:'100%',
-                        }}
-                        onMouseOver={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='#f8f8f7'; }}
-                        onMouseOut={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='transparent'; }}>
-                          <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
-                          <div>
-                            <p style={{ fontSize:13, fontWeight:600, color:pbSection===s.id?'#fff':'#0F0F0F', margin:'0 0 2px' }}>{s.label}</p>
-                            <p style={{ fontSize:11, color:pbSection===s.id?'rgba(255,255,255,.5)':'#9ca3af', margin:0 }}>{s.desc}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* ── OUR STORY sections ── */}
-                  {activePageTab==='our-story' && (
-                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                      {[
-                        { id:'hero',     icon:'🌟', label:'Hero',           desc:'Eyebrow, title, subtitle' },
-                        { id:'timeline', icon:'📅', label:'Timeline',       desc:'Yearly story sections' },
-                        { id:'mission',  icon:'🎯', label:'Mission & Vision', desc:'Two statement cards' },
-                        { id:'values',   icon:'💎', label:'Values',         desc:'4-column value cards' },
-                        { id:'cta',      icon:'🔗', label:'CTA Section',    desc:'Bottom call-to-action' },
-                      ].map(s=>(
-                        <button key={s.id} onClick={()=>setPbSection(s.id)} style={{
-                          display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
-                          borderRadius:10, border:`1px solid ${pbSection===s.id?'#0F0F0F':'transparent'}`,
-                          background: pbSection===s.id ? '#0F0F0F' : 'transparent',
-                          cursor:'pointer', fontFamily:'inherit', textAlign:'left' as const,
-                          transition:'all .15s', width:'100%',
-                        }}
-                        onMouseOver={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='#f8f8f7'; }}
-                        onMouseOut={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='transparent'; }}>
-                          <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
-                          <div>
-                            <p style={{ fontSize:13, fontWeight:600, color:pbSection===s.id?'#fff':'#0F0F0F', margin:'0 0 2px' }}>{s.label}</p>
-                            <p style={{ fontSize:11, color:pbSection===s.id?'rgba(255,255,255,.5)':'#9ca3af', margin:0 }}>{s.desc}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* ── TERMS sections ── */}
-                  {activePageTab==='terms' && (
-                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                      {[
-                        { id:'header',   icon:'📋', label:'Header',         desc:'Title, last updated, intro' },
-                        { id:'sections', icon:'📝', label:'T&C Sections',   desc:'All numbered sections' },
-                      ].map(s=>(
-                        <button key={s.id} onClick={()=>setPbSection(s.id)} style={{
-                          display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
-                          borderRadius:10, border:`1px solid ${pbSection===s.id?'#0F0F0F':'transparent'}`,
-                          background: pbSection===s.id ? '#0F0F0F' : 'transparent',
-                          cursor:'pointer', fontFamily:'inherit', textAlign:'left' as const,
-                          transition:'all .15s', width:'100%',
-                        }}
-                        onMouseOver={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='#f8f8f7'; }}
-                        onMouseOut={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='transparent'; }}>
-                          <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
-                          <div>
-                            <p style={{ fontSize:13, fontWeight:600, color:pbSection===s.id?'#fff':'#0F0F0F', margin:'0 0 2px' }}>{s.label}</p>
-                            <p style={{ fontSize:11, color:pbSection===s.id?'rgba(255,255,255,.5)':'#9ca3af', margin:0 }}>{s.desc}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                {/* Add Element Panel (Hostinger-style) */}
+                <div style={{ borderTop:'1px solid #f3f4f6', padding:'10px 10px 8px' }}>
+                  <p style={{ fontSize:10,fontWeight:700,color:'#9ca3af',letterSpacing:'0.08em',textTransform:'uppercase' as const,margin:'0 0 8px' }}>Add Element</p>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4 }}>
+                    {[
+                      { icon:'T', label:'Text',    action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'text', content:'Your text here', size:'16px', align:'left', bold:false }]})); setPbSection('_elements'); toast$('Text element added'); }},
+                      { icon:'⬜', label:'Button', action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'button', label:'Click me', link:'/', style:'filled' }]})); setPbSection('_elements'); toast$('Button added'); }},
+                      { icon:'🖼', label:'Image',  action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'image', url:'', alt:'', width:'100%' }]})); setPbSection('_elements'); toast$('Image block added'); }},
+                      { icon:'▶', label:'Video',  action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'video', url:'', title:'' }]})); setPbSection('_elements'); toast$('Video block added'); }},
+                      { icon:'—', label:'Divider', action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'divider', color:'#e5e7eb', thickness:1 }]})); toast$('Divider added'); }},
+                      { icon:'↕', label:'Spacer',  action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'spacer', height:40 }]})); toast$('Spacer added'); }},
+                      { icon:'@', label:'Form',    action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'form', title:'Contact Us', fields:['name','email','message'], buttonText:'Send' }]})); setPbSection('_elements'); toast$('Contact form added'); }},
+                      { icon:'📧', label:'Subscribe', action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'subscribe', title:'Stay Updated', placeholder:'Enter your email', buttonText:'Subscribe' }]})); setPbSection('_elements'); toast$('Subscribe block added'); }},
+                      { icon:'</>', label:'Embed', action:()=>{ pbSetContent(activePageTab, c=>({...c, _custom_blocks:[...((c._custom_blocks as unknown[])||[]), { id:Date.now(), type:'embed', html:'<!-- paste your embed code here -->' }]})); setPbSection('_elements'); toast$('Embed block added'); }},
+                    ].map(el=>(
+                      <button key={el.label} onClick={el.action} style={{ display:'flex',flexDirection:'column' as const,alignItems:'center',padding:'8px 4px',borderRadius:8,border:'1px solid #f3f4f6',background:'#fafaf9',cursor:'pointer',fontFamily:'inherit',transition:'all .12s',gap:3 }}
+                        onMouseOver={e=>{(e.currentTarget as HTMLElement).style.background='#f0f0ef';(e.currentTarget as HTMLElement).style.borderColor='#d1d5db';}}
+                        onMouseOut={e=>{(e.currentTarget as HTMLElement).style.background='#fafaf9';(e.currentTarget as HTMLElement).style.borderColor='#f3f4f6';}}>
+                        <span style={{ fontSize:15 }}>{el.icon}</span>
+                        <span style={{ fontSize:9,fontWeight:600,color:'#6b7280' }}>{el.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Quick links */}
-                <div style={{ padding:'10px 12px', borderTop:'1px solid #f3f4f6' }}>
-                  <a href={activePageTab==='landing'?'/':'/'+activePageTab} target="_blank" style={{ fontSize:12, color:'#6b7280', textDecoration:'none', display:'flex', alignItems:'center', gap:5 }}>
-                    🔗 {activePageTab==='landing'?'thisismycard.vercel.app':'thisismycard.vercel.app/'+activePageTab}
+                <div style={{ padding:'8px 14px 10px', borderTop:'1px solid #f3f4f6' }}>
+                  <a href={activePageTab==='landing'?'https://thisismycard.vercel.app':'https://thisismycard.vercel.app/'+activePageTab} target="_blank" style={{ fontSize:11,color:'#9ca3af',textDecoration:'none',display:'flex',alignItems:'center',gap:4 }}>
+                    🔗 View live page
                   </a>
                 </div>
               </div>
 
-              {/* ── Center: Editor Panel ── */}
-              <div style={{ width:380, borderRight:'1px solid #e5e7eb', background:'#fafaf9', overflowY:'auto', display:'flex', flexDirection:'column' }}>
-                <div style={{ padding:'16px 20px', borderBottom:'1px solid #f3f4f6', background:'#fff' }}>
-                  <p style={{ fontSize:11, fontWeight:700, color:'#9ca3af', letterSpacing:'0.08em', textTransform:'uppercase' as const, margin:'0 0 2px' }}>Editing</p>
-                  <p style={{ fontSize:14, fontWeight:700, color:'#0F0F0F', margin:0 }}>
-                    {pbSection==='hero'?'🌟 Hero Section':pbSection==='stats'?'📊 Stats':pbSection==='cta'?'🎯 CTA Banner':pbSection==='timeline'?'📅 Timeline':pbSection==='mission'?'🎯 Mission & Vision':pbSection==='values'?'💎 Values':pbSection==='header'?'📋 Header':pbSection==='sections'?'📝 T&C Sections':'Select a section'}
+              {/* ── CENTER: Field Editor ── */}
+              <div style={{ width:380,borderRight:'1px solid #e5e7eb',background:'#fafaf9',display:'flex',flexDirection:'column',overflow:'hidden' }}>
+                <div style={{ padding:'14px 16px',borderBottom:'1px solid #f3f4f6',background:'#fff',flexShrink:0 }}>
+                  <p style={{ fontSize:10,fontWeight:700,color:'#9ca3af',letterSpacing:'0.08em',textTransform:'uppercase' as const,margin:'0 0 1px' }}>Editing</p>
+                  <p style={{ fontSize:13,fontWeight:700,color:'#0F0F0F',margin:0 }}>
+                    {{hero:'🌟 Hero',stats:'📊 Stats',cta:'🎯 CTA Banner',timeline:'📅 Timeline',mission:'🎯 Mission & Vision',values:'💎 Values',header:'📋 Header',sections:'📝 T&C Sections',_elements:'🧩 Custom Elements'}[pbSection]||'Select a section'}
                   </p>
                 </div>
 
-                <div style={{ flex:1, padding:'16px 20px' }}>
+                <div style={{ flex:1,overflowY:'auto',padding:'16px' }}>
 
-                  {/* ══ LANDING — Hero ══ */}
-                  {activePageTab==='landing' && pbSection==='hero' && (
-                    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                      <div>
-                        <Label>Badge Text</Label>
-                        <input style={inp()} value={(landingContent.hero_badge as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_badge:e.target.value}))} placeholder="NFC Digital Business Card · Malaysia"/>
-                      </div>
-                      <div>
-                        <Label>Hero Title</Label>
-                        <textarea style={{...inp(),resize:'vertical',height:64}} value={(landingContent.hero_title as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_title:e.target.value}))}/>
-                      </div>
-                      <div>
-                        <Label>Hero Subtitle</Label>
-                        <textarea style={{...inp(),resize:'vertical',height:80}} value={(landingContent.hero_subtitle as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_subtitle:e.target.value}))}/>
-                      </div>
+                  {/* ── LANDING ── */}
+                  {activePageTab==='landing'&&pbSection==='hero'&&(
+                    <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
+                      <div><Label>Badge Text</Label><input style={inp()} value={(landingContent.hero_badge as string)||''} onChange={e=>pbSetContent('landing',c=>({...c,hero_badge:e.target.value}))} placeholder="NFC Digital Business Card"/></div>
+                      <div><Label>Hero Title</Label><textarea style={{...inp(),resize:'vertical' as const,height:64}} value={(landingContent.hero_title as string)||''} onChange={e=>pbSetContent('landing',c=>({...c,hero_title:e.target.value}))}/></div>
+                      <div><Label>Hero Subtitle</Label><textarea style={{...inp(),resize:'vertical' as const,height:80}} value={(landingContent.hero_subtitle as string)||''} onChange={e=>pbSetContent('landing',c=>({...c,hero_subtitle:e.target.value}))}/></div>
                       <Grid2>
-                        <div><Label>CTA Primary Button</Label><input style={inp()} value={(landingContent.cta_primary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_primary:e.target.value}))}/></div>
-                        <div><Label>CTA Secondary Button</Label><input style={inp()} value={(landingContent.cta_secondary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_secondary:e.target.value}))}/></div>
+                        <div><Label>CTA Primary</Label><input style={inp()} value={(landingContent.cta_primary as string)||''} onChange={e=>pbSetContent('landing',c=>({...c,cta_primary:e.target.value}))}/></div>
+                        <div><Label>CTA Secondary</Label><input style={inp()} value={(landingContent.cta_secondary as string)||''} onChange={e=>pbSetContent('landing',c=>({...c,cta_secondary:e.target.value}))}/></div>
                       </Grid2>
                     </div>
                   )}
 
-                  {/* ══ LANDING — Stats ══ */}
-                  {activePageTab==='landing' && pbSection==='stats' && (
+                  {activePageTab==='landing'&&pbSection==='stats'&&(
                     <div>
                       {((landingContent.stats as Array<{value:string;label:string}>)||[]).map((s,i)=>(
                         <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
                             <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Stat {i+1}</span>
-                            <button onClick={()=>{const a=((landingContent.stats as Array<{value:string;label:string}>)||[]).filter((_,j)=>j!==i);setLandingContent(c=>({...c,stats:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                            <button onClick={()=>{const a=((landingContent.stats as Array<{value:string;label:string}>)||[]).filter((_,j)=>j!==i);pbSetContent('landing',c=>({...c,stats:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
                           </div>
                           <Grid2>
-                            <div><Label>Nilai</Label><input style={inp()} value={s.value} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],value:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
-                            <div><Label>Label</Label><input style={inp()} value={s.label} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],label:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
+                            <div><Label>Nilai</Label><input style={inp()} value={s.value} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],value:e.target.value};pbSetContent('landing',c=>({...c,stats:a}));}}/></div>
+                            <div><Label>Label</Label><input style={inp()} value={s.label} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],label:e.target.value};pbSetContent('landing',c=>({...c,stats:a}));}}/></div>
                           </Grid2>
                         </div>
                       ))}
-                      <button onClick={()=>setLandingContent(c=>({...c,stats:[...((c.stats as Array<{value:string;label:string}>)||[]),{value:'',label:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Stat</button>
+                      <button onClick={()=>pbSetContent('landing',c=>({...c,stats:[...((c.stats as Array<{value:string;label:string}>)||[]),{value:'',label:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Stat</button>
                     </div>
                   )}
 
-                  {/* ══ LANDING — CTA Banner ══ */}
-                  {activePageTab==='landing' && pbSection==='cta' && (
+                  {activePageTab==='landing'&&pbSection==='cta'&&(
                     <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                      <div><Label>Banner Title</Label><input style={inp()} value={(landingContent.cta_banner_title as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_title:e.target.value}))}/></div>
-                      <div><Label>Banner Description</Label><textarea style={{...inp(),resize:'vertical',height:72}} value={(landingContent.cta_banner_desc as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_desc:e.target.value}))}/></div>
+                      <div><Label>Banner Title</Label><input style={inp()} value={(landingContent.cta_banner_title as string)||''} onChange={e=>pbSetContent('landing',c=>({...c,cta_banner_title:e.target.value}))}/></div>
+                      <div><Label>Banner Description</Label><textarea style={{...inp(),resize:'vertical' as const,height:72}} value={(landingContent.cta_banner_desc as string)||''} onChange={e=>pbSetContent('landing',c=>({...c,cta_banner_desc:e.target.value}))}/></div>
                     </div>
                   )}
 
-                  {/* ══ OUR STORY — Hero ══ */}
-                  {activePageTab==='our-story' && pbSection==='hero' && (
+                  {/* ── OUR STORY ── */}
+                  {activePageTab==='our-story'&&pbSection==='hero'&&(
                     <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                      <div><Label>Eyebrow (small text atas)</Label><input style={inp()} value={(storyContent.hero_eyebrow as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_eyebrow:e.target.value}))}/></div>
-                      <div><Label>Hero Title</Label><textarea style={{...inp(),resize:'vertical',height:64}} value={(storyContent.hero_title as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_title:e.target.value}))}/></div>
-                      <div><Label>Hero Subtitle</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.hero_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_subtitle:e.target.value}))}/></div>
+                      <div><Label>Eyebrow</Label><input style={inp()} value={(storyContent.hero_eyebrow as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,hero_eyebrow:e.target.value}))}/></div>
+                      <div><Label>Title</Label><textarea style={{...inp(),resize:'vertical' as const,height:64}} value={(storyContent.hero_title as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,hero_title:e.target.value}))}/></div>
+                      <div><Label>Subtitle</Label><textarea style={{...inp(),resize:'vertical' as const,height:80}} value={(storyContent.hero_subtitle as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,hero_subtitle:e.target.value}))}/></div>
                     </div>
                   )}
 
-                  {/* ══ OUR STORY — Timeline ══ */}
-                  {activePageTab==='our-story' && pbSection==='timeline' && (
+                  {activePageTab==='our-story'&&pbSection==='timeline'&&(
                     <div>
                       {((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).map((s,i)=>(
                         <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
                             <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Section {i+1}</span>
-                            <button onClick={()=>{const a=((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,story_sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕ Buang</button>
+                            <div style={{display:'flex',gap:4}}>
+                              <button onClick={()=>{if(i>0){const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];[a[i-1],a[i]]=[a[i],a[i-1]];pbSetContent('our-story',c=>({...c,story_sections:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↑</button>
+                              <button onClick={()=>{if(i<((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).length-1){const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];[a[i],a[i+1]]=[a[i+1],a[i]];pbSetContent('our-story',c=>({...c,story_sections:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↓</button>
+                              <button onClick={()=>{const a=((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).filter((_,j)=>j!==i);pbSetContent('our-story',c=>({...c,story_sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                            </div>
                           </div>
                           <Grid2>
-                            <div><Label>Tahun</Label><input style={inp()} value={s.year} placeholder="2024" onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],year:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
-                            <div><Label>Tajuk</Label><input style={inp()} value={s.title} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                            <div><Label>Tahun</Label><input style={inp()} value={s.year} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],year:e.target.value};pbSetContent('our-story',c=>({...c,story_sections:a}));}}/></div>
+                            <div><Label>Tajuk</Label><input style={inp()} value={s.title} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};pbSetContent('our-story',c=>({...c,story_sections:a}));}}/></div>
                           </Grid2>
-                          <div style={{marginTop:8}}><Label>Isi</Label><textarea style={{...inp(),resize:'vertical',height:64}} value={s.body} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                          <div style={{marginTop:8}}><Label>Isi</Label><textarea style={{...inp(),resize:'vertical' as const,height:64}} value={s.body} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};pbSetContent('our-story',c=>({...c,story_sections:a}));}}/></div>
                         </div>
                       ))}
-                      <button onClick={()=>setStoryContent(c=>({...c,story_sections:[...((c.story_sections as Array<{year:string;title:string;body:string}>)||[]),{year:'',title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Section</button>
+                      <button onClick={()=>pbSetContent('our-story',c=>({...c,story_sections:[...((c.story_sections as Array<{year:string;title:string;body:string}>)||[]),{year:'',title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Section</button>
                     </div>
                   )}
 
-                  {/* ══ OUR STORY — Mission & Vision ══ */}
-                  {activePageTab==='our-story' && pbSection==='mission' && (
+                  {activePageTab==='our-story'&&pbSection==='mission'&&(
                     <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                      <div style={{padding:'12px',background:'#fff0d4',borderRadius:10,border:'1px solid #fde68a'}}>
-                        <p style={{fontSize:12,fontWeight:700,color:'#92400e',margin:'0 0 10px'}}>🎯 Mission</p>
-                        <div><Label>Title</Label><input style={inp()} value={(storyContent.mission_title as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_title:e.target.value}))}/></div>
-                        <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.mission_body as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_body:e.target.value}))}/></div>
+                      <div style={{padding:'12px',background:'#fffbeb',borderRadius:10,border:'1px solid #fde68a'}}>
+                        <p style={{fontSize:11,fontWeight:700,color:'#92400e',margin:'0 0 10px'}}>🎯 Mission</p>
+                        <div><Label>Title</Label><input style={inp()} value={(storyContent.mission_title as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,mission_title:e.target.value}))}/></div>
+                        <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical' as const,height:72}} value={(storyContent.mission_body as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,mission_body:e.target.value}))}/></div>
                       </div>
-                      <div style={{padding:'12px',background:'#e0f7fa',borderRadius:10,border:'1px solid #b2ebf2'}}>
-                        <p style={{fontSize:12,fontWeight:700,color:'#006064',margin:'0 0 10px'}}>🔭 Vision</p>
-                        <div><Label>Title</Label><input style={inp()} value={(storyContent.vision_title as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_title:e.target.value}))}/></div>
-                        <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.vision_body as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_body:e.target.value}))}/></div>
+                      <div style={{padding:'12px',background:'#ecfeff',borderRadius:10,border:'1px solid #a5f3fc'}}>
+                        <p style={{fontSize:11,fontWeight:700,color:'#155e75',margin:'0 0 10px'}}>🔭 Vision</p>
+                        <div><Label>Title</Label><input style={inp()} value={(storyContent.vision_title as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,vision_title:e.target.value}))}/></div>
+                        <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical' as const,height:72}} value={(storyContent.vision_body as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,vision_body:e.target.value}))}/></div>
                       </div>
                     </div>
                   )}
 
-                  {/* ══ OUR STORY — Values ══ */}
-                  {activePageTab==='our-story' && pbSection==='values' && (
+                  {activePageTab==='our-story'&&pbSection==='values'&&(
                     <div>
                       {((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).map((v,i)=>(
                         <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
                             <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Value {i+1}</span>
-                            <button onClick={()=>{const a=((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,values:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                            <div style={{display:'flex',gap:4}}>
+                              <button onClick={()=>{if(i>0){const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];[a[i-1],a[i]]=[a[i],a[i-1]];pbSetContent('our-story',c=>({...c,values:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↑</button>
+                              <button onClick={()=>{if(i<((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).length-1){const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];[a[i],a[i+1]]=[a[i+1],a[i]];pbSetContent('our-story',c=>({...c,values:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↓</button>
+                              <button onClick={()=>{const a=((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).filter((_,j)=>j!==i);pbSetContent('our-story',c=>({...c,values:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                            </div>
                           </div>
                           <div style={{display:'grid',gridTemplateColumns:'56px 1fr',gap:8}}>
-                            <div><Label>Icon</Label><input style={{...inp(),textAlign:'center' as const,fontSize:20}} value={v.icon} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],icon:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
-                            <div><Label>Title</Label><input style={inp()} value={v.title} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                            <div><Label>Icon</Label><input style={{...inp(),textAlign:'center' as const,fontSize:18}} value={v.icon} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],icon:e.target.value};pbSetContent('our-story',c=>({...c,values:a}));}}/></div>
+                            <div><Label>Title</Label><input style={inp()} value={v.title} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],title:e.target.value};pbSetContent('our-story',c=>({...c,values:a}));}}/></div>
                           </div>
-                          <div style={{marginTop:8}}><Label>Description</Label><input style={inp()} value={v.desc} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],desc:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                          <div style={{marginTop:8}}><Label>Description</Label><input style={inp()} value={v.desc} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],desc:e.target.value};pbSetContent('our-story',c=>({...c,values:a}));}}/></div>
                         </div>
                       ))}
-                      <button onClick={()=>setStoryContent(c=>({...c,values:[...((c.values as Array<{icon:string;title:string;desc:string}>)||[]),{icon:'✦',title:'',desc:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Value</button>
+                      <button onClick={()=>pbSetContent('our-story',c=>({...c,values:[...((c.values as Array<{icon:string;title:string;desc:string}>)||[]),{icon:'✦',title:'',desc:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Value</button>
                     </div>
                   )}
 
-                  {/* ══ OUR STORY — CTA ══ */}
-                  {activePageTab==='our-story' && pbSection==='cta' && (
+                  {activePageTab==='our-story'&&pbSection==='cta'&&(
                     <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                      <div><Label>Title</Label><input style={inp()} value={(storyContent.cta_title as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_title:e.target.value}))}/></div>
-                      <div><Label>Subtitle</Label><input style={inp()} value={(storyContent.cta_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_subtitle:e.target.value}))}/></div>
-                      <div><Label>Button Text</Label><input style={inp()} value={(storyContent.cta_button as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_button:e.target.value}))}/></div>
+                      <div><Label>Title</Label><input style={inp()} value={(storyContent.cta_title as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,cta_title:e.target.value}))}/></div>
+                      <div><Label>Subtitle</Label><input style={inp()} value={(storyContent.cta_subtitle as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,cta_subtitle:e.target.value}))}/></div>
+                      <div><Label>Button Text</Label><input style={inp()} value={(storyContent.cta_button as string)||''} onChange={e=>pbSetContent('our-story',c=>({...c,cta_button:e.target.value}))}/></div>
                     </div>
                   )}
 
-                  {/* ══ TERMS — Header ══ */}
-                  {activePageTab==='terms' && pbSection==='header' && (
+                  {/* ── TERMS ── */}
+                  {activePageTab==='terms'&&pbSection==='header'&&(
                     <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                      <div><Label>Last Updated</Label><input style={inp()} value={(termsContent.last_updated as string)||''} placeholder="January 2024" onChange={e=>setTermsContent(c=>({...c,last_updated:e.target.value}))}/></div>
-                      <div><Label>Intro Paragraph</Label><textarea style={{...inp(),resize:'vertical',height:96}} value={(termsContent.intro as string)||''} onChange={e=>setTermsContent(c=>({...c,intro:e.target.value}))}/></div>
+                      <div><Label>Last Updated</Label><input style={inp()} value={(termsContent.last_updated as string)||''} placeholder="January 2024" onChange={e=>pbSetContent('terms',c=>({...c,last_updated:e.target.value}))}/></div>
+                      <div><Label>Intro Paragraph</Label><textarea style={{...inp(),resize:'vertical' as const,height:96}} value={(termsContent.intro as string)||''} onChange={e=>pbSetContent('terms',c=>({...c,intro:e.target.value}))}/></div>
                     </div>
                   )}
 
-                  {/* ══ TERMS — Sections ══ */}
-                  {activePageTab==='terms' && pbSection==='sections' && (
+                  {activePageTab==='terms'&&pbSection==='sections'&&(
                     <div>
                       {((termsContent.sections as Array<{title:string;body:string}>)||[]).map((s,i)=>(
                         <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
                             <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Section {i+1}</span>
-                            <button onClick={()=>{const a=((termsContent.sections as Array<{title:string;body:string}>)||[]).filter((_,j)=>j!==i);setTermsContent(c=>({...c,sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                            <div style={{display:'flex',gap:4}}>
+                              <button onClick={()=>{if(i>0){const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];[a[i-1],a[i]]=[a[i],a[i-1]];pbSetContent('terms',c=>({...c,sections:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↑</button>
+                              <button onClick={()=>{if(i<((termsContent.sections as Array<{title:string;body:string}>)||[]).length-1){const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];[a[i],a[i+1]]=[a[i+1],a[i]];pbSetContent('terms',c=>({...c,sections:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↓</button>
+                              <button onClick={()=>{const a=((termsContent.sections as Array<{title:string;body:string}>)||[]).filter((_,j)=>j!==i);pbSetContent('terms',c=>({...c,sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                            </div>
                           </div>
-                          <div><Label>Heading</Label><input style={inp()} value={s.title} placeholder="1. Services" onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
-                          <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={s.body} onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
+                          <div><Label>Heading</Label><input style={inp()} value={s.title} placeholder="1. Services" onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};pbSetContent('terms',c=>({...c,sections:a}));}}/></div>
+                          <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical' as const,height:80}} value={s.body} onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};pbSetContent('terms',c=>({...c,sections:a}));}}/></div>
                         </div>
                       ))}
-                      <button onClick={()=>setTermsContent(c=>({...c,sections:[...((c.sections as Array<{title:string;body:string}>)||[]),{title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Section</button>
+                      <button onClick={()=>pbSetContent('terms',c=>({...c,sections:[...((c.sections as Array<{title:string;body:string}>)||[]),{title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Section</button>
                     </div>
                   )}
 
-                  {/* Default — no section selected */}
-                  {!pbSection && (
-                    <div style={{textAlign:'center',padding:'48px 20px'}}>
+                  {/* ── CUSTOM ELEMENTS ── */}
+                  {pbSection==='_elements'&&(
+                    <div>
+                      <p style={{fontSize:12,color:'#6b7280',marginBottom:12}}>Custom elements untuk page ini:</p>
+                      {(((activePageTab==='landing'?landingContent:activePageTab==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>)||[]).map((bl,i)=>(
+                        <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                            <span style={{fontSize:11,fontWeight:700,color:'#6b7280',display:'flex',alignItems:'center',gap:5}}>
+                              {bl.type==='text'?'T ':bl.type==='button'?'⬜ ':bl.type==='image'?'🖼 ':bl.type==='video'?'▶ ':bl.type==='divider'?'— ':bl.type==='spacer'?'↕ ':bl.type==='form'?'@ ':bl.type==='subscribe'?'📧 ':bl.type==='embed'?'</> ':''}{String(bl.type).charAt(0).toUpperCase()+String(bl.type).slice(1)}
+                            </span>
+                            <div style={{display:'flex',gap:4}}>
+                              <button onClick={()=>{if(i>0){const page=activePageTab;const cur=(page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>;const a=[...cur];[a[i-1],a[i]]=[a[i],a[i-1]];pbSetContent(page,c=>({...c,_custom_blocks:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↑</button>
+                              <button onClick={()=>{if(i<(((activePageTab==='landing'?landingContent:activePageTab==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>)||[]).length-1){const page=activePageTab;const cur=(page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>;const a=[...cur];[a[i],a[i+1]]=[a[i+1],a[i]];pbSetContent(page,c=>({...c,_custom_blocks:a}));}}} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:4,padding:'2px 6px',cursor:'pointer',fontFamily:'inherit'}}>↓</button>
+                              <button onClick={()=>{const page=activePageTab;const cur=(page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>;pbSetContent(page,c=>({...c,_custom_blocks:cur.filter((_,j)=>j!==i)}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>🗑</button>
+                            </div>
+                          </div>
+                          {bl.type==='text'&&<div><Label>Content</Label><textarea style={{...inp(),resize:'vertical' as const,height:56}} value={String(bl.content||'')} onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],content:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div>}
+                          {bl.type==='button'&&<Grid2><div><Label>Label</Label><input style={inp()} value={String(bl.label||'')} onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],label:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div><div><Label>Link</Label><input style={inp()} value={String(bl.link||'')} onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],link:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div></Grid2>}
+                          {bl.type==='image'&&<div><Label>Image URL</Label><input style={inp()} value={String(bl.url||'')} placeholder="https://..." onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],url:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div>}
+                          {bl.type==='video'&&<div><Label>YouTube / Vimeo URL</Label><input style={inp()} value={String(bl.url||'')} placeholder="https://youtube.com/..." onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],url:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div>}
+                          {bl.type==='spacer'&&<div><Label>Height (px)</Label><input type="number" style={inp()} value={Number(bl.height)||40} onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],height:parseInt(e.target.value)||40};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div>}
+                          {bl.type==='embed'&&<div><Label>HTML / Embed Code</Label><textarea style={{...inp(),resize:'vertical' as const,height:80,fontFamily:'monospace',fontSize:11}} value={String(bl.html||'')} onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],html:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div>}
+                          {bl.type==='subscribe'&&<Grid2><div><Label>Title</Label><input style={inp()} value={String(bl.title||'')} onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],title:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div><div><Label>Button Text</Label><input style={inp()} value={String(bl.buttonText||'')} onChange={e=>{const page=activePageTab;const cur=[...((page==='landing'?landingContent:page==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>||[])];cur[i]={...cur[i],buttonText:e.target.value};pbSetContent(page,c=>({...c,_custom_blocks:cur}));}}/></div></Grid2>}
+                        </div>
+                      ))}
+                      {(((activePageTab==='landing'?landingContent:activePageTab==='our-story'?storyContent:termsContent)._custom_blocks as Array<Record<string,unknown>>)||[]).length===0&&(
+                        <div style={{textAlign:'center',padding:'24px',color:'#9ca3af',fontSize:13}}>
+                          <p style={{marginBottom:4}}>No custom elements yet</p>
+                          <p style={{fontSize:11}}>Use "Add Element" panel on the left to add elements</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!pbSection&&(
+                    <div style={{textAlign:'center',padding:'48px 16px'}}>
                       <div style={{fontSize:40,marginBottom:12}}>👈</div>
                       <p style={{fontSize:14,fontWeight:600,color:'#374151',marginBottom:6}}>Pilih section untuk edit</p>
-                      <p style={{fontSize:12,color:'#9ca3af'}}>Click mana-mana section di sebelah kiri untuk mula edit kandungan.</p>
+                      <p style={{fontSize:12,color:'#9ca3af'}}>Atau gunakan panel Add Element di bawah untuk tambah element baru.</p>
                     </div>
                   )}
                 </div>
 
-                {/* Save button bottom */}
-                {pbSection && (
-                  <div style={{padding:'12px 20px',borderTop:'1px solid #f3f4f6',background:'#fff'}}>
-                    <button onClick={()=>{
-                      const saves: Record<string, ()=>Promise<{success:boolean;error?:string}>> = {
-                        'landing': ()=>savePageContent('landing',landingContent),
-                        'our-story': ()=>savePageContent('our-story',storyContent),
-                        'terms': ()=>savePageContent('terms',termsContent),
-                      };
-                      saveAll(saves[activePageTab],{} as object,'Saved');
-                    }} style={{...btn(),width:'100%',padding:'11px'}}>
-                      {savedOk?'✓ Changes Saved!':'💾 Save Changes'}
-                    </button>
+                {/* Save bar */}
+                {pbSection&&(
+                  <div style={{padding:'10px 16px',borderTop:'1px solid #f3f4f6',background:'#fff',display:'flex',gap:8,flexShrink:0}}>
+                    <button onClick={pbUndo} disabled={!pbHistory[activePageTab]?.length} style={{...btn('#f3f4f6','#374151'),padding:'9px 12px',border:'1px solid #e5e7eb',opacity:pbHistory[activePageTab]?.length?1:.4}}>↩</button>
+                    <button onClick={pbSave} style={{...btn(),flex:1,padding:'10px'}}>{pbSaving?'Saving…':savedOk?'✓ Saved!':'💾 Save'}</button>
                   </div>
                 )}
               </div>
 
-              {/* ── Right: Live Preview ── */}
-              <div style={{ flex:1, background:'#e5e7eb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start', padding:'20px', overflow:'auto' }}>
-                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10, letterSpacing:'0.06em', textTransform:'uppercase' as const }}>Live Preview</div>
-                <div style={{
-                  background:'#fff',
-                  borderRadius:12,
-                  overflow:'hidden',
-                  boxShadow:'0 8px 32px rgba(0,0,0,0.15)',
-                  width: pbDevice==='mobile' ? 390 : '100%',
-                  maxWidth: pbDevice==='mobile' ? 390 : 1100,
-                  transition:'width 0.3s ease',
-                }}>
-                  <div style={{ background:'#1a1a1a', padding:'8px 16px', display:'flex', alignItems:'center', gap:8 }}>
-                    <div style={{ display:'flex', gap:5 }}>
-                      <div style={{ width:10,height:10,borderRadius:'50%',background:'#ef4444' }}/>
-                      <div style={{ width:10,height:10,borderRadius:'50%',background:'#f59e0b' }}/>
-                      <div style={{ width:10,height:10,borderRadius:'50%',background:'#22c55e' }}/>
+              {/* ── RIGHT: Live Preview ── */}
+              <div style={{flex:1,background:'#e5e7eb',display:'flex',flexDirection:'column',alignItems:'center',padding:'20px',overflow:'auto'}}>
+                <div style={{fontSize:10,color:'#9ca3af',marginBottom:10,letterSpacing:'0.06em',textTransform:'uppercase' as const}}>Live Preview</div>
+                <div style={{background:'#fff',borderRadius:12,overflow:'hidden',boxShadow:'0 8px 32px rgba(0,0,0,.15)',width:pbDevice==='mobile'?390:'100%',maxWidth:pbDevice==='mobile'?390:1080,transition:'width 0.3s ease'}}>
+                  <div style={{background:'#1a1a1a',padding:'8px 14px',display:'flex',alignItems:'center',gap:8}}>
+                    <div style={{display:'flex',gap:5}}>
+                      <div style={{width:9,height:9,borderRadius:'50%',background:'#ef4444'}}/>
+                      <div style={{width:9,height:9,borderRadius:'50%',background:'#f59e0b'}}/>
+                      <div style={{width:9,height:9,borderRadius:'50%',background:'#22c55e'}}/>
                     </div>
-                    <div style={{ flex:1, background:'rgba(255,255,255,0.1)', borderRadius:5, padding:'3px 10px', fontSize:10, color:'rgba(255,255,255,0.5)', textAlign:'center' as const }}>
+                    <div style={{flex:1,background:'rgba(255,255,255,.1)',borderRadius:5,padding:'3px 10px',fontSize:10,color:'rgba(255,255,255,.5)',textAlign:'center' as const}}>
                       thisismycard.vercel.app{activePageTab==='landing'?'':'/'+activePageTab}
                     </div>
+                    <button onClick={()=>{ const iframe=document.querySelector('iframe[title="Page preview"]') as HTMLIFrameElement; if(iframe){iframe.src=iframe.src;} }} style={{fontSize:10,color:'rgba(255,255,255,.4)',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>↻</button>
                   </div>
-                  <iframe
-                    key={`${activePageTab}-preview`}
-                    src={activePageTab==='landing'?'/':'/'+activePageTab}
-                    style={{
-                      width:'100%',
-                      height: pbDevice==='mobile' ? 700 : 600,
-                      border:'none',
-                      display:'block',
-                    }}
-                    title="Page preview"
-                  />
+                  <iframe key={`${activePageTab}-${pbDevice}`} src={activePageTab==='landing'?'/':'/'+activePageTab} style={{width:'100%',height:pbDevice==='mobile'?700:580,border:'none',display:'block'}} title="Page preview"/>
                 </div>
-                <p style={{fontSize:11,color:'#9ca3af',marginTop:10}}>Save changes to update preview</p>
+                <p style={{fontSize:11,color:'#9ca3af',marginTop:8}}>Save → refresh preview ↻</p>
               </div>
             </div>
           </div>
         )}
+
 
                 {/* ══ PLUGINS ══════════════════════════════════════════ */}
         {tab==='plugins' && (
