@@ -252,6 +252,8 @@ export default function AdminPage() {
   const [storyContent,    setStoryContent]    = useState<Record<string, unknown>>({});
   const [termsContent,    setTermsContent]    = useState<Record<string, unknown>>({});
   const [activePageTab,   setActivePageTab]   = useState<'landing'|'our-story'|'terms'>('landing');
+  const [pbDevice,        setPbDevice]        = useState<'desktop'|'mobile'>('desktop');
+  const [pbSection,       setPbSection]       = useState<string>('hero');
   const [plugins,   setPlugins]  = useState<Array<{ plugin_key:string; enabled:boolean; config:Record<string,string> }>>([]);
   const [loading,     setLoading]    = useState(true);
   const [isSeedData,  setIsSeedData]  = useState(false);
@@ -843,162 +845,391 @@ export default function AdminPage() {
 
         {/* ══ PAGES ══════════════════════════════════════════ */}
         {tab==='pages' && (
-          <div style={{ maxWidth:800 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:22 }}>
-              <div>
-                <h1 style={{ fontSize:22,fontWeight:700,color:'#0F0F0F',margin:'0 0 4px',letterSpacing:'-0.03em' }}>Pages Editor</h1>
-                <p style={{ fontSize:13,color:'#6b7280',margin:0 }}>Edit kandungan semua halaman website.</p>
+          <div style={{ position:'fixed', top:0, left:220, right:0, bottom:0, display:'flex', flexDirection:'column', background:'#f0f0ef', zIndex:10 }}>
+
+            {/* ── Top Bar ── */}
+            <div style={{ height:52, background:'#fff', borderBottom:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px', flexShrink:0, boxShadow:'0 1px 4px rgba(0,0,0,.06)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                <button onClick={()=>setTab('dashboard')} style={{ fontSize:12, color:'#6b7280', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5 }}>
+                  ← Back
+                </button>
+                <span style={{ width:1, height:18, background:'#e5e7eb' }}/>
+                <span style={{ fontSize:14, fontWeight:700, color:'#0F0F0F' }}>Pages Editor</span>
               </div>
-              <div style={{ display:'flex', gap:6 }}>
-                {([['landing','🏠 Landing'],['our-story','📖 Our Story'],['terms','📋 Terms']] as const).map(([pg,label])=>(
+
+              {/* Page selector */}
+              <div style={{ display:'flex', gap:4 }}>
+                {([['landing','🏠','Landing'],['our-story','📖','Our Story'],['terms','📋','Terms']] as const).map(([pg,icon,label])=>(
                   <button key={pg} onClick={()=>setActivePageTab(pg)} style={{
                     fontSize:12, fontWeight:activePageTab===pg?700:500,
-                    padding:'8px 16px', borderRadius:9, border:'1px solid',
-                    cursor:'pointer', fontFamily:'inherit', transition:'all .15s',
+                    padding:'6px 14px', borderRadius:8, border:'1px solid',
+                    cursor:'pointer', fontFamily:'inherit', transition:'all .12s',
                     background: activePageTab===pg ? '#0F0F0F' : '#fff',
                     color: activePageTab===pg ? '#fff' : '#6b7280',
                     borderColor: activePageTab===pg ? '#0F0F0F' : '#e5e7eb',
-                  }}>{label}</button>
+                    display:'flex', alignItems:'center', gap:5,
+                  }}>{icon} {label}</button>
                 ))}
+              </div>
+
+              {/* Device + actions */}
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <div style={{ display:'flex', background:'#f3f4f6', borderRadius:8, padding:2 }}>
+                  {([['desktop','🖥'],['mobile','📱']] as const).map(([d,ic])=>(
+                    <button key={d} onClick={()=>setPbDevice(d)} style={{
+                      padding:'5px 10px', borderRadius:6, border:'none', cursor:'pointer',
+                      background: pbDevice===d ? '#fff' : 'transparent',
+                      fontSize:13, boxShadow: pbDevice===d ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+                      transition:'all .15s',
+                    }}>{ic}</button>
+                  ))}
+                </div>
+                <button onClick={()=>{ const url = activePageTab==='landing'?'/':'/'+activePageTab; window.open(url,'_blank'); }} style={{ fontSize:12, color:'#6b7280', background:'#f3f4f6', border:'1px solid #e5e7eb', cursor:'pointer', padding:'6px 14px', borderRadius:8, fontFamily:'inherit' }}>
+                  👁 Preview
+                </button>
+                <button onClick={()=>{
+                  const saves: Record<string, ()=>Promise<{success:boolean;error?:string}>> = {
+                    'landing': ()=>savePageContent('landing',landingContent),
+                    'our-story': ()=>savePageContent('our-story',storyContent),
+                    'terms': ()=>savePageContent('terms',termsContent),
+                  };
+                  saveAll(saves[activePageTab],{} as object,`${activePageTab} disimpan`);
+                }} style={{ fontSize:12, fontWeight:700, color:'#fff', background:'#0F0F0F', border:'none', cursor:'pointer', padding:'7px 18px', borderRadius:8, fontFamily:'inherit', boxShadow:'0 2px 8px rgba(0,0,0,.15)' }}>
+                  {savedOk ? '✓ Saved' : '💾 Publish'}
+                </button>
               </div>
             </div>
 
-            {/* ── LANDING TAB ── */}
-            {activePageTab==='landing' && (
-              <div>
-                <Section title="🏠 Hero Section">
-                  <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
-                    <div><Label>Hero Title</Label><input style={inp()} value={(landingContent.hero_title as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_title:e.target.value}))}/></div>
-                    <div><Label>Hero Subtitle</Label><textarea style={{...inp(),resize:'vertical',height:72}} value={(landingContent.hero_subtitle as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_subtitle:e.target.value}))}/></div>
-                    <div><Label>Badge Text</Label><input style={inp()} value={(landingContent.hero_badge as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_badge:e.target.value}))}/></div>
-                    <Grid2>
-                      <div><Label>CTA Primary</Label><input style={inp()} value={(landingContent.cta_primary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_primary:e.target.value}))}/></div>
-                      <div><Label>CTA Secondary</Label><input style={inp()} value={(landingContent.cta_secondary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_secondary:e.target.value}))}/></div>
-                    </Grid2>
-                  </div>
-                </Section>
-                <Section title="📊 Stats">
-                  {((landingContent.stats as Array<{value:string;label:string}>)||[]).map((s,i)=>(
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 32px',gap:10,marginBottom:10,alignItems:'center'}}>
-                      <div><Label>Nilai</Label><input style={inp()} value={s.value} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],value:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
-                      <div><Label>Label</Label><input style={inp()} value={s.label} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],label:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
-                      <button onClick={()=>{const a=((landingContent.stats as Array<{value:string;label:string}>)||[]).filter((_,j)=>j!==i);setLandingContent(c=>({...c,stats:a}));}} style={{...btn('#fff','#ef4444'),padding:'6px 8px',border:'1px solid #fecaca',marginTop:18}}>✕</button>
+            {/* ── Main Layout: Sidebar + Preview ── */}
+            <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+
+              {/* ── Left Panel ── */}
+              <div style={{ width:300, background:'#fff', borderRight:'1px solid #e5e7eb', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+                {/* Section list header */}
+                <div style={{ padding:'14px 16px 10px', borderBottom:'1px solid #f3f4f6' }}>
+                  <p style={{ fontSize:11, fontWeight:700, color:'#9ca3af', letterSpacing:'0.08em', textTransform:'uppercase' as const, margin:0 }}>
+                    {activePageTab==='landing'?'Landing Sections':activePageTab==='our-story'?'Our Story Sections':'Terms Sections'}
+                  </p>
+                </div>
+
+                {/* Scrollable section list */}
+                <div style={{ flex:1, overflowY:'auto', padding:'8px' }}>
+
+                  {/* ── LANDING sections ── */}
+                  {activePageTab==='landing' && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      {[
+                        { id:'hero',    icon:'🌟', label:'Hero Section',   desc:'Title, subtitle, badge, CTA buttons' },
+                        { id:'stats',   icon:'📊', label:'Stats',          desc:'2,400+ cards · 98% · 48h' },
+                        { id:'cta',     icon:'🎯', label:'CTA Banner',     desc:'Bottom call-to-action banner' },
+                      ].map(s=>(
+                        <button key={s.id} onClick={()=>setPbSection(s.id)} style={{
+                          display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
+                          borderRadius:10, border:`1px solid ${pbSection===s.id?'#0F0F0F':'transparent'}`,
+                          background: pbSection===s.id ? '#0F0F0F' : 'transparent',
+                          cursor:'pointer', fontFamily:'inherit', textAlign:'left' as const,
+                          transition:'all .15s', width:'100%',
+                        }}
+                        onMouseOver={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='#f8f8f7'; }}
+                        onMouseOut={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='transparent'; }}>
+                          <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
+                          <div>
+                            <p style={{ fontSize:13, fontWeight:600, color:pbSection===s.id?'#fff':'#0F0F0F', margin:'0 0 2px' }}>{s.label}</p>
+                            <p style={{ fontSize:11, color:pbSection===s.id?'rgba(255,255,255,.5)':'#9ca3af', margin:0 }}>{s.desc}</p>
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  ))}
-                  <button onClick={()=>setLandingContent(c=>({...c,stats:[...((c.stats as Array<{value:string;label:string}>)||[]),{value:'',label:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'8px 14px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Stat</button>
-                </Section>
-                <Section title="🎯 CTA Banner">
-                  <div><Label>Tajuk</Label><input style={inp()} value={(landingContent.cta_banner_title as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_title:e.target.value}))}/></div>
-                  <div style={{marginTop:12}}><Label>Deskripsi</Label><textarea style={{...inp(),resize:'vertical',height:64}} value={(landingContent.cta_banner_desc as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_desc:e.target.value}))}/></div>
-                </Section>
-                <button onClick={()=>saveAll(()=>savePageContent('landing',landingContent),{} as object,'Landing page disimpan')} style={{...btn(),padding:'13px 28px',boxShadow:'0 4px 16px rgba(0,0,0,.15)'}}>
-                  {savedOk?'✓ Saved!':'💾 Simpan Landing Page'}
-                </button>
+                  )}
+
+                  {/* ── OUR STORY sections ── */}
+                  {activePageTab==='our-story' && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      {[
+                        { id:'hero',     icon:'🌟', label:'Hero',           desc:'Eyebrow, title, subtitle' },
+                        { id:'timeline', icon:'📅', label:'Timeline',       desc:'Yearly story sections' },
+                        { id:'mission',  icon:'🎯', label:'Mission & Vision', desc:'Two statement cards' },
+                        { id:'values',   icon:'💎', label:'Values',         desc:'4-column value cards' },
+                        { id:'cta',      icon:'🔗', label:'CTA Section',    desc:'Bottom call-to-action' },
+                      ].map(s=>(
+                        <button key={s.id} onClick={()=>setPbSection(s.id)} style={{
+                          display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
+                          borderRadius:10, border:`1px solid ${pbSection===s.id?'#0F0F0F':'transparent'}`,
+                          background: pbSection===s.id ? '#0F0F0F' : 'transparent',
+                          cursor:'pointer', fontFamily:'inherit', textAlign:'left' as const,
+                          transition:'all .15s', width:'100%',
+                        }}
+                        onMouseOver={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='#f8f8f7'; }}
+                        onMouseOut={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='transparent'; }}>
+                          <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
+                          <div>
+                            <p style={{ fontSize:13, fontWeight:600, color:pbSection===s.id?'#fff':'#0F0F0F', margin:'0 0 2px' }}>{s.label}</p>
+                            <p style={{ fontSize:11, color:pbSection===s.id?'rgba(255,255,255,.5)':'#9ca3af', margin:0 }}>{s.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── TERMS sections ── */}
+                  {activePageTab==='terms' && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      {[
+                        { id:'header',   icon:'📋', label:'Header',         desc:'Title, last updated, intro' },
+                        { id:'sections', icon:'📝', label:'T&C Sections',   desc:'All numbered sections' },
+                      ].map(s=>(
+                        <button key={s.id} onClick={()=>setPbSection(s.id)} style={{
+                          display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
+                          borderRadius:10, border:`1px solid ${pbSection===s.id?'#0F0F0F':'transparent'}`,
+                          background: pbSection===s.id ? '#0F0F0F' : 'transparent',
+                          cursor:'pointer', fontFamily:'inherit', textAlign:'left' as const,
+                          transition:'all .15s', width:'100%',
+                        }}
+                        onMouseOver={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='#f8f8f7'; }}
+                        onMouseOut={e=>{ if(pbSection!==s.id)(e.currentTarget as HTMLElement).style.background='transparent'; }}>
+                          <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
+                          <div>
+                            <p style={{ fontSize:13, fontWeight:600, color:pbSection===s.id?'#fff':'#0F0F0F', margin:'0 0 2px' }}>{s.label}</p>
+                            <p style={{ fontSize:11, color:pbSection===s.id?'rgba(255,255,255,.5)':'#9ca3af', margin:0 }}>{s.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick links */}
+                <div style={{ padding:'10px 12px', borderTop:'1px solid #f3f4f6' }}>
+                  <a href={activePageTab==='landing'?'/':'/'+activePageTab} target="_blank" style={{ fontSize:12, color:'#6b7280', textDecoration:'none', display:'flex', alignItems:'center', gap:5 }}>
+                    🔗 {activePageTab==='landing'?'thisismycard.vercel.app':'thisismycard.vercel.app/'+activePageTab}
+                  </a>
+                </div>
               </div>
-            )}
 
-            {/* ── OUR STORY TAB ── */}
-            {activePageTab==='our-story' && (
-              <div>
-                <Section title="🌟 Hero">
-                  <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                    <div><Label>Eyebrow (small text atas)</Label><input style={inp()} value={(storyContent.hero_eyebrow as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_eyebrow:e.target.value}))}/></div>
-                    <div><Label>Hero Title</Label><input style={inp()} value={(storyContent.hero_title as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_title:e.target.value}))}/></div>
-                    <div><Label>Hero Subtitle</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.hero_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_subtitle:e.target.value}))}/></div>
-                  </div>
-                </Section>
+              {/* ── Center: Editor Panel ── */}
+              <div style={{ width:380, borderRight:'1px solid #e5e7eb', background:'#fafaf9', overflowY:'auto', display:'flex', flexDirection:'column' }}>
+                <div style={{ padding:'16px 20px', borderBottom:'1px solid #f3f4f6', background:'#fff' }}>
+                  <p style={{ fontSize:11, fontWeight:700, color:'#9ca3af', letterSpacing:'0.08em', textTransform:'uppercase' as const, margin:'0 0 2px' }}>Editing</p>
+                  <p style={{ fontSize:14, fontWeight:700, color:'#0F0F0F', margin:0 }}>
+                    {pbSection==='hero'?'🌟 Hero Section':pbSection==='stats'?'📊 Stats':pbSection==='cta'?'🎯 CTA Banner':pbSection==='timeline'?'📅 Timeline':pbSection==='mission'?'🎯 Mission & Vision':pbSection==='values'?'💎 Values':pbSection==='header'?'📋 Header':pbSection==='sections'?'📝 T&C Sections':'Select a section'}
+                  </p>
+                </div>
 
-                <Section title="📅 Timeline Sections">
-                  {((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).map((s,i)=>(
-                    <div key={i} style={{background:'#f8f8f7',borderRadius:12,padding:'16px',marginBottom:12}}>
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-                        <span style={{fontSize:12,fontWeight:700,color:'#6b7280'}}>Section {i+1}</span>
-                        <button onClick={()=>{const a=((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,story_sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'#fff0f0',border:'1px solid #fecaca',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontFamily:'inherit'}}>✕ Buang</button>
+                <div style={{ flex:1, padding:'16px 20px' }}>
+
+                  {/* ══ LANDING — Hero ══ */}
+                  {activePageTab==='landing' && pbSection==='hero' && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                      <div>
+                        <Label>Badge Text</Label>
+                        <input style={inp()} value={(landingContent.hero_badge as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_badge:e.target.value}))} placeholder="NFC Digital Business Card · Malaysia"/>
+                      </div>
+                      <div>
+                        <Label>Hero Title</Label>
+                        <textarea style={{...inp(),resize:'vertical',height:64}} value={(landingContent.hero_title as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_title:e.target.value}))}/>
+                      </div>
+                      <div>
+                        <Label>Hero Subtitle</Label>
+                        <textarea style={{...inp(),resize:'vertical',height:80}} value={(landingContent.hero_subtitle as string)||''} onChange={e=>setLandingContent(c=>({...c,hero_subtitle:e.target.value}))}/>
                       </div>
                       <Grid2>
-                        <div><Label>Tahun / Era</Label><input style={inp()} value={s.year} placeholder="2024" onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],year:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
-                        <div><Label>Tajuk</Label><input style={inp()} value={s.title} placeholder="The Problem" onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                        <div><Label>CTA Primary Button</Label><input style={inp()} value={(landingContent.cta_primary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_primary:e.target.value}))}/></div>
+                        <div><Label>CTA Secondary Button</Label><input style={inp()} value={(landingContent.cta_secondary as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_secondary:e.target.value}))}/></div>
                       </Grid2>
-                      <div style={{marginTop:10}}><Label>Isi Cerita</Label><textarea style={{...inp(),resize:'vertical',height:72}} value={s.body} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
                     </div>
-                  ))}
-                  <button onClick={()=>setStoryContent(c=>({...c,story_sections:[...((c.story_sections as Array<{year:string;title:string;body:string}>)||[]),{year:'',title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 16px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Section</button>
-                </Section>
+                  )}
 
-                <Section title="🎯 Mission & Vision">
-                  <Grid2>
-                    <div><Label>Mission Title</Label><input style={inp()} value={(storyContent.mission_title as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_title:e.target.value}))}/></div>
-                    <div><Label>Vision Title</Label><input style={inp()} value={(storyContent.vision_title as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_title:e.target.value}))}/></div>
-                  </Grid2>
-                  <div style={{marginTop:12}}><Label>Mission Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.mission_body as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_body:e.target.value}))}/></div>
-                  <div style={{marginTop:12}}><Label>Vision Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.vision_body as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_body:e.target.value}))}/></div>
-                </Section>
-
-                <Section title="💎 Values">
-                  {((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).map((v,i)=>(
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'60px 1fr 1fr 32px',gap:10,marginBottom:10,alignItems:'center'}}>
-                      <div><Label>Icon</Label><input style={inp()} value={v.icon} placeholder="⚡" onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],icon:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
-                      <div><Label>Title</Label><input style={inp()} value={v.title} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
-                      <div><Label>Description</Label><input style={inp()} value={v.desc} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],desc:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
-                      <button onClick={()=>{const a=((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,values:a}));}} style={{...btn('#fff','#ef4444'),padding:'6px 8px',border:'1px solid #fecaca',marginTop:18}}>✕</button>
+                  {/* ══ LANDING — Stats ══ */}
+                  {activePageTab==='landing' && pbSection==='stats' && (
+                    <div>
+                      {((landingContent.stats as Array<{value:string;label:string}>)||[]).map((s,i)=>(
+                        <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                            <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Stat {i+1}</span>
+                            <button onClick={()=>{const a=((landingContent.stats as Array<{value:string;label:string}>)||[]).filter((_,j)=>j!==i);setLandingContent(c=>({...c,stats:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                          </div>
+                          <Grid2>
+                            <div><Label>Nilai</Label><input style={inp()} value={s.value} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],value:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
+                            <div><Label>Label</Label><input style={inp()} value={s.label} onChange={e=>{const a=[...((landingContent.stats as Array<{value:string;label:string}>)||[])];a[i]={...a[i],label:e.target.value};setLandingContent(c=>({...c,stats:a}));}}/></div>
+                          </Grid2>
+                        </div>
+                      ))}
+                      <button onClick={()=>setLandingContent(c=>({...c,stats:[...((c.stats as Array<{value:string;label:string}>)||[]),{value:'',label:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Stat</button>
                     </div>
-                  ))}
-                  <button onClick={()=>setStoryContent(c=>({...c,values:[...((c.values as Array<{icon:string;title:string;desc:string}>)||[]),{icon:'✦',title:'',desc:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'8px 14px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Value</button>
-                </Section>
+                  )}
 
-                <Section title="🔗 CTA Section">
-                  <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                    <div><Label>Title</Label><input style={inp()} value={(storyContent.cta_title as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_title:e.target.value}))}/></div>
-                    <div><Label>Subtitle</Label><input style={inp()} value={(storyContent.cta_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_subtitle:e.target.value}))}/></div>
-                    <div><Label>Button Text</Label><input style={inp()} value={(storyContent.cta_button as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_button:e.target.value}))}/></div>
-                  </div>
-                </Section>
+                  {/* ══ LANDING — CTA Banner ══ */}
+                  {activePageTab==='landing' && pbSection==='cta' && (
+                    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                      <div><Label>Banner Title</Label><input style={inp()} value={(landingContent.cta_banner_title as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_title:e.target.value}))}/></div>
+                      <div><Label>Banner Description</Label><textarea style={{...inp(),resize:'vertical',height:72}} value={(landingContent.cta_banner_desc as string)||''} onChange={e=>setLandingContent(c=>({...c,cta_banner_desc:e.target.value}))}/></div>
+                    </div>
+                  )}
 
-                <div style={{display:'flex',gap:12,alignItems:'center'}}>
-                  <button onClick={()=>saveAll(()=>savePageContent('our-story',storyContent),{} as object,'Our Story disimpan')} style={{...btn(),padding:'13px 28px',boxShadow:'0 4px 16px rgba(0,0,0,.15)'}}>
-                    {savedOk?'✓ Saved!':'💾 Simpan Our Story'}
-                  </button>
-                  <a href="/our-story" target="_blank" style={{fontSize:13,color:'#6b7280',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>
-                    👁 Preview →
-                  </a>
-                </div>
-              </div>
-            )}
+                  {/* ══ OUR STORY — Hero ══ */}
+                  {activePageTab==='our-story' && pbSection==='hero' && (
+                    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                      <div><Label>Eyebrow (small text atas)</Label><input style={inp()} value={(storyContent.hero_eyebrow as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_eyebrow:e.target.value}))}/></div>
+                      <div><Label>Hero Title</Label><textarea style={{...inp(),resize:'vertical',height:64}} value={(storyContent.hero_title as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_title:e.target.value}))}/></div>
+                      <div><Label>Hero Subtitle</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.hero_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,hero_subtitle:e.target.value}))}/></div>
+                    </div>
+                  )}
 
-            {/* ── TERMS TAB ── */}
-            {activePageTab==='terms' && (
-              <div>
-                <Section title="📋 Header">
-                  <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                    <div><Label>Last Updated</Label><input style={inp()} value={(termsContent.last_updated as string)||''} placeholder="January 2024" onChange={e=>setTermsContent(c=>({...c,last_updated:e.target.value}))}/></div>
-                    <div><Label>Intro Paragraph</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(termsContent.intro as string)||''} onChange={e=>setTermsContent(c=>({...c,intro:e.target.value}))}/></div>
-                  </div>
-                </Section>
+                  {/* ══ OUR STORY — Timeline ══ */}
+                  {activePageTab==='our-story' && pbSection==='timeline' && (
+                    <div>
+                      {((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).map((s,i)=>(
+                        <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                            <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Section {i+1}</span>
+                            <button onClick={()=>{const a=((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,story_sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕ Buang</button>
+                          </div>
+                          <Grid2>
+                            <div><Label>Tahun</Label><input style={inp()} value={s.year} placeholder="2024" onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],year:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                            <div><Label>Tajuk</Label><input style={inp()} value={s.title} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                          </Grid2>
+                          <div style={{marginTop:8}}><Label>Isi</Label><textarea style={{...inp(),resize:'vertical',height:64}} value={s.body} onChange={e=>{const a=[...((storyContent.story_sections as Array<{year:string;title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setStoryContent(c=>({...c,story_sections:a}));}}/></div>
+                        </div>
+                      ))}
+                      <button onClick={()=>setStoryContent(c=>({...c,story_sections:[...((c.story_sections as Array<{year:string;title:string;body:string}>)||[]),{year:'',title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Section</button>
+                    </div>
+                  )}
 
-                <Section title="📝 Sections">
-                  {((termsContent.sections as Array<{title:string;body:string}>)||[]).map((s,i)=>(
-                    <div key={i} style={{background:'#f8f8f7',borderRadius:12,padding:'16px',marginBottom:10}}>
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                        <span style={{fontSize:12,fontWeight:700,color:'#6b7280'}}>Section {i+1}</span>
-                        <button onClick={()=>{const a=((termsContent.sections as Array<{title:string;body:string}>)||[]).filter((_,j)=>j!==i);setTermsContent(c=>({...c,sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'#fff0f0',border:'1px solid #fecaca',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontFamily:'inherit'}}>✕ Buang</button>
+                  {/* ══ OUR STORY — Mission & Vision ══ */}
+                  {activePageTab==='our-story' && pbSection==='mission' && (
+                    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                      <div style={{padding:'12px',background:'#fff0d4',borderRadius:10,border:'1px solid #fde68a'}}>
+                        <p style={{fontSize:12,fontWeight:700,color:'#92400e',margin:'0 0 10px'}}>🎯 Mission</p>
+                        <div><Label>Title</Label><input style={inp()} value={(storyContent.mission_title as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_title:e.target.value}))}/></div>
+                        <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.mission_body as string)||''} onChange={e=>setStoryContent(c=>({...c,mission_body:e.target.value}))}/></div>
                       </div>
-                      <div><Label>Heading</Label><input style={inp()} value={s.title} placeholder="1. Services" onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
-                      <div style={{marginTop:10}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:96}} value={s.body} onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
+                      <div style={{padding:'12px',background:'#e0f7fa',borderRadius:10,border:'1px solid #b2ebf2'}}>
+                        <p style={{fontSize:12,fontWeight:700,color:'#006064',margin:'0 0 10px'}}>🔭 Vision</p>
+                        <div><Label>Title</Label><input style={inp()} value={(storyContent.vision_title as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_title:e.target.value}))}/></div>
+                        <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={(storyContent.vision_body as string)||''} onChange={e=>setStoryContent(c=>({...c,vision_body:e.target.value}))}/></div>
+                      </div>
                     </div>
-                  ))}
-                  <button onClick={()=>setTermsContent(c=>({...c,sections:[...((c.sections as Array<{title:string;body:string}>)||[]),{title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 16px',border:'1px solid #e5e7eb',fontSize:12}}>+ Tambah Section</button>
-                </Section>
+                  )}
 
-                <div style={{display:'flex',gap:12,alignItems:'center'}}>
-                  <button onClick={()=>saveAll(()=>savePageContent('terms',termsContent),{} as object,'Terms disimpan')} style={{...btn(),padding:'13px 28px',boxShadow:'0 4px 16px rgba(0,0,0,.15)'}}>
-                    {savedOk?'✓ Saved!':'💾 Simpan Terms'}
-                  </button>
-                  <a href="/terms" target="_blank" style={{fontSize:13,color:'#6b7280',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>
-                    👁 Preview →
-                  </a>
+                  {/* ══ OUR STORY — Values ══ */}
+                  {activePageTab==='our-story' && pbSection==='values' && (
+                    <div>
+                      {((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).map((v,i)=>(
+                        <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                            <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Value {i+1}</span>
+                            <button onClick={()=>{const a=((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[]).filter((_,j)=>j!==i);setStoryContent(c=>({...c,values:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                          </div>
+                          <div style={{display:'grid',gridTemplateColumns:'56px 1fr',gap:8}}>
+                            <div><Label>Icon</Label><input style={{...inp(),textAlign:'center' as const,fontSize:20}} value={v.icon} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],icon:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                            <div><Label>Title</Label><input style={inp()} value={v.title} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],title:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                          </div>
+                          <div style={{marginTop:8}}><Label>Description</Label><input style={inp()} value={v.desc} onChange={e=>{const a=[...((storyContent.values as Array<{icon:string;title:string;desc:string}>)||[])];a[i]={...a[i],desc:e.target.value};setStoryContent(c=>({...c,values:a}));}}/></div>
+                        </div>
+                      ))}
+                      <button onClick={()=>setStoryContent(c=>({...c,values:[...((c.values as Array<{icon:string;title:string;desc:string}>)||[]),{icon:'✦',title:'',desc:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Value</button>
+                    </div>
+                  )}
+
+                  {/* ══ OUR STORY — CTA ══ */}
+                  {activePageTab==='our-story' && pbSection==='cta' && (
+                    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                      <div><Label>Title</Label><input style={inp()} value={(storyContent.cta_title as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_title:e.target.value}))}/></div>
+                      <div><Label>Subtitle</Label><input style={inp()} value={(storyContent.cta_subtitle as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_subtitle:e.target.value}))}/></div>
+                      <div><Label>Button Text</Label><input style={inp()} value={(storyContent.cta_button as string)||''} onChange={e=>setStoryContent(c=>({...c,cta_button:e.target.value}))}/></div>
+                    </div>
+                  )}
+
+                  {/* ══ TERMS — Header ══ */}
+                  {activePageTab==='terms' && pbSection==='header' && (
+                    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                      <div><Label>Last Updated</Label><input style={inp()} value={(termsContent.last_updated as string)||''} placeholder="January 2024" onChange={e=>setTermsContent(c=>({...c,last_updated:e.target.value}))}/></div>
+                      <div><Label>Intro Paragraph</Label><textarea style={{...inp(),resize:'vertical',height:96}} value={(termsContent.intro as string)||''} onChange={e=>setTermsContent(c=>({...c,intro:e.target.value}))}/></div>
+                    </div>
+                  )}
+
+                  {/* ══ TERMS — Sections ══ */}
+                  {activePageTab==='terms' && pbSection==='sections' && (
+                    <div>
+                      {((termsContent.sections as Array<{title:string;body:string}>)||[]).map((s,i)=>(
+                        <div key={i} style={{background:'#fff',border:'1px solid #f3f4f6',borderRadius:10,padding:'12px',marginBottom:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                            <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>Section {i+1}</span>
+                            <button onClick={()=>{const a=((termsContent.sections as Array<{title:string;body:string}>)||[]).filter((_,j)=>j!==i);setTermsContent(c=>({...c,sections:a}));}} style={{fontSize:11,color:'#ef4444',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+                          </div>
+                          <div><Label>Heading</Label><input style={inp()} value={s.title} placeholder="1. Services" onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],title:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
+                          <div style={{marginTop:8}}><Label>Body</Label><textarea style={{...inp(),resize:'vertical',height:80}} value={s.body} onChange={e=>{const a=[...((termsContent.sections as Array<{title:string;body:string}>)||[])];a[i]={...a[i],body:e.target.value};setTermsContent(c=>({...c,sections:a}));}}/></div>
+                        </div>
+                      ))}
+                      <button onClick={()=>setTermsContent(c=>({...c,sections:[...((c.sections as Array<{title:string;body:string}>)||[]),{title:'',body:''}]}))} style={{...btn('#f3f4f6','#374151'),padding:'9px 14px',border:'1px solid #e5e7eb',fontSize:12,width:'100%'}}>+ Tambah Section</button>
+                    </div>
+                  )}
+
+                  {/* Default — no section selected */}
+                  {!pbSection && (
+                    <div style={{textAlign:'center',padding:'48px 20px'}}>
+                      <div style={{fontSize:40,marginBottom:12}}>👈</div>
+                      <p style={{fontSize:14,fontWeight:600,color:'#374151',marginBottom:6}}>Pilih section untuk edit</p>
+                      <p style={{fontSize:12,color:'#9ca3af'}}>Click mana-mana section di sebelah kiri untuk mula edit kandungan.</p>
+                    </div>
+                  )}
                 </div>
+
+                {/* Save button bottom */}
+                {pbSection && (
+                  <div style={{padding:'12px 20px',borderTop:'1px solid #f3f4f6',background:'#fff'}}>
+                    <button onClick={()=>{
+                      const saves: Record<string, ()=>Promise<{success:boolean;error?:string}>> = {
+                        'landing': ()=>savePageContent('landing',landingContent),
+                        'our-story': ()=>savePageContent('our-story',storyContent),
+                        'terms': ()=>savePageContent('terms',termsContent),
+                      };
+                      saveAll(saves[activePageTab],{} as object,'Saved');
+                    }} style={{...btn(),width:'100%',padding:'11px'}}>
+                      {savedOk?'✓ Changes Saved!':'💾 Save Changes'}
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* ── Right: Live Preview ── */}
+              <div style={{ flex:1, background:'#e5e7eb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start', padding:'20px', overflow:'auto' }}>
+                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10, letterSpacing:'0.06em', textTransform:'uppercase' as const }}>Live Preview</div>
+                <div style={{
+                  background:'#fff',
+                  borderRadius:12,
+                  overflow:'hidden',
+                  boxShadow:'0 8px 32px rgba(0,0,0,0.15)',
+                  width: pbDevice==='mobile' ? 390 : '100%',
+                  maxWidth: pbDevice==='mobile' ? 390 : 1100,
+                  transition:'width 0.3s ease',
+                }}>
+                  <div style={{ background:'#1a1a1a', padding:'8px 16px', display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ display:'flex', gap:5 }}>
+                      <div style={{ width:10,height:10,borderRadius:'50%',background:'#ef4444' }}/>
+                      <div style={{ width:10,height:10,borderRadius:'50%',background:'#f59e0b' }}/>
+                      <div style={{ width:10,height:10,borderRadius:'50%',background:'#22c55e' }}/>
+                    </div>
+                    <div style={{ flex:1, background:'rgba(255,255,255,0.1)', borderRadius:5, padding:'3px 10px', fontSize:10, color:'rgba(255,255,255,0.5)', textAlign:'center' as const }}>
+                      thisismycard.vercel.app{activePageTab==='landing'?'':'/'+activePageTab}
+                    </div>
+                  </div>
+                  <iframe
+                    key={`${activePageTab}-preview`}
+                    src={activePageTab==='landing'?'/':'/'+activePageTab}
+                    style={{
+                      width:'100%',
+                      height: pbDevice==='mobile' ? 700 : 600,
+                      border:'none',
+                      display:'block',
+                    }}
+                    title="Page preview"
+                  />
+                </div>
+                <p style={{fontSize:11,color:'#9ca3af',marginTop:10}}>Save changes to update preview</p>
+              </div>
+            </div>
           </div>
         )}
 
